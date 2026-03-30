@@ -216,10 +216,26 @@ export function DayTimeline({
   const cancelPendingTouch = useCallback(() => {
     clearArmTimer();
     removePendingListeners();
+    const pend = pendingRef.current;
+    const el = pendingTargetRef.current;
+    const pid = pend?.pointerId ?? activePointerIdRef.current;
+    if (el != null && pid != null) {
+      try {
+        el.releasePointerCapture(pid);
+      } catch {
+        // no-op
+      }
+    }
     pendingRef.current = null;
     pendingTargetRef.current = null;
     armedRef.current = false;
-  }, [clearArmTimer, removePendingListeners]);
+    activePointerIdRef.current = null;
+    dragStartHourRef.current = null;
+    dragOriginClientYRef.current = null;
+    dragGestureStartedRef.current = false;
+    setIsSelecting(false);
+    resetDragSelection();
+  }, [clearArmTimer, removePendingListeners, resetDragSelection]);
 
   const finishDrag = useCallback(
     (pointerId: number) => {
@@ -271,51 +287,29 @@ export function DayTimeline({
         return;
       }
 
-      // Touch: defer selection so scrolling isn’t interpreted as a slot tap
+      // Touch: defer *visual* selection, but capture the pointer synchronously here.
+      // (iOS/Safari only reliably tracks drags if setPointerCapture runs in pointerdown.)
       cancelPendingTouch();
 
       const pointerId = e.pointerId;
       const originX = e.clientX;
       const originY = e.clientY;
+      const el = e.currentTarget;
 
       pendingRef.current = { pointerId, slotStart, originX, originY };
-      pendingTargetRef.current = e.currentTarget;
+      pendingTargetRef.current = el;
       armedRef.current = false;
 
-      const onWinMove = (ev: PointerEvent) => {
-        if (ev.pointerId !== pointerId) return;
-        const p = pendingRef.current;
-        if (!p || p.pointerId !== pointerId) return;
-        const dist = Math.hypot(ev.clientX - p.originX, ev.clientY - p.originY);
-        if (dist > SCROLL_CANCEL_THRESHOLD_PX) {
-          cancelPendingTouch();
-        }
-      };
-
-      const onWinEnd = (ev: PointerEvent) => {
-        if (ev.pointerId !== pointerId) return;
-        if (!armedRef.current) {
-          cancelPendingTouch();
-        }
-      };
-
-      const cleanup = () => {
-        window.removeEventListener("pointermove", onWinMove);
-        window.removeEventListener("pointerup", onWinEnd);
-        window.removeEventListener("pointercancel", onWinEnd);
-      };
-
-      window.addEventListener("pointermove", onWinMove, { passive: true });
-      window.addEventListener("pointerup", onWinEnd);
-      window.addEventListener("pointercancel", onWinEnd);
-      pendingListenersCleanupRef.current = cleanup;
+      try {
+        el.setPointerCapture(pointerId);
+      } catch {
+        // no-op
+      }
 
       armTimerRef.current = setTimeout(() => {
         armTimerRef.current = null;
         const pend = pendingRef.current;
         if (!pend || pend.pointerId !== pointerId) return;
-
-        removePendingListeners();
 
         armedRef.current = true;
         activePointerIdRef.current = pointerId;
@@ -330,34 +324,23 @@ export function DayTimeline({
           isRangeBlocked(pend.slotStart, endHour)
         );
 
-        const el = pendingTargetRef.current;
         pendingRef.current = null;
-        pendingTargetRef.current = null;
-
-        if (el) {
-          try {
-            el.setPointerCapture(pointerId);
-          } catch {
-            // no-op
-          }
-        }
       }, ARM_DELAY_MS);
     },
-    [
-      applyDragSelection,
-      cancelPendingTouch,
-      isRangeBlocked,
-      removePendingListeners,
-      sheetOpen,
-    ]
+    [applyDragSelection, cancelPendingTouch, isRangeBlocked, sheetOpen]
   );
 
   const handleSlotPointerMove = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       const pointerId = e.pointerId;
 
-      // Touch still in “pending arm” window — window listeners handle cancel
+      // Touch: waiting for arm — cancel if finger moves enough to mean “scroll”
       if (!armedRef.current && pendingRef.current?.pointerId === pointerId) {
+        const p = pendingRef.current;
+        const dist = Math.hypot(e.clientX - p.originX, e.clientY - p.originY);
+        if (dist > SCROLL_CANCEL_THRESHOLD_PX) {
+          cancelPendingTouch();
+        }
         return;
       }
 
@@ -371,7 +354,14 @@ export function DayTimeline({
       const currentSlotStart = getSlotStartForClientY(e.clientY);
       if (currentSlotStart == null) return;
 
-      if (!dragGestureStartedRef.current && dy < DRAG_TAP_THRESHOLD_PX) {
+      const slotChanged = currentSlotStart !== startHour;
+
+      // Keep a 1-hour pill until the finger moves enough or enters another hour
+      if (
+        !dragGestureStartedRef.current &&
+        dy < DRAG_TAP_THRESHOLD_PX &&
+        !slotChanged
+      ) {
         const endHour = startHour + SLOT_DURATION_HOURS;
         applyDragSelection(
           { startHour, endHour },
@@ -393,7 +383,7 @@ export function DayTimeline({
         isRangeBlocked(selStart, selEnd)
       );
     },
-    [applyDragSelection, getSlotStartForClientY, isRangeBlocked]
+    [applyDragSelection, cancelPendingTouch, getSlotStartForClientY, isRangeBlocked]
   );
 
   const handleSlotPointerUp = useCallback(

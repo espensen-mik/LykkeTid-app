@@ -1,6 +1,7 @@
 "use client";
 
 import { DayTimeline, type DayEntry } from "@/app/components/day-timeline";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function pad2(n: number): string {
@@ -87,7 +88,9 @@ export default function Home() {
 
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   const [dayDraftKey, setDayDraftKey] = useState<string>("");
+  const [profileOpen, setProfileOpen] = useState(false);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
@@ -147,6 +150,8 @@ export default function Home() {
     setSelectedDayKey(key);
   };
 
+  const goWeek = (deltaWeeks: number) => goDay(deltaWeeks * 7);
+
   const openDayPicker = () => {
     if (!selectedDayKey) return;
     setDayDraftKey(selectedDayKey);
@@ -197,14 +202,31 @@ export default function Home() {
               LykkeTid
             </div>
 
-            <button
-              type="button"
-              onClick={openDayPicker}
-              aria-label="Åbn kalender"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25"
-            >
-              <CalendarIcon />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={openDayPicker}
+                aria-label="Åbn kalender"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25"
+              >
+                <CalendarIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                aria-label="Profil"
+                className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full ring-2 ring-white/80 ring-offset-1 ring-offset-mint/90"
+              >
+                <Image
+                  src="/mik_profil.jpg"
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="h-full w-full object-cover"
+                  sizes="36px"
+                />
+              </button>
+            </div>
           </div>
 
           <div className="mt-1.5 space-y-0.5">
@@ -218,8 +240,31 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Slim week strip */}
-          <div className="mt-2 border-t border-line-soft/40 pt-2">
+          {/* Slim week strip — swipe left/right for previous/next week (look unchanged) */}
+          <div
+            className="mt-2 border-t border-line-soft/40 pt-2"
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              const t = e.touches[0];
+              weekSwipeStartRef.current = { x: t.clientX, y: t.clientY };
+            }}
+            onTouchEnd={(e) => {
+              const start = weekSwipeStartRef.current;
+              weekSwipeStartRef.current = null;
+              if (!start) return;
+
+              const t = e.changedTouches[0];
+              const dx = t.clientX - start.x;
+              const dy = t.clientY - start.y;
+
+              if (Math.abs(dx) < 50) return;
+              if (Math.abs(dy) > 70) return;
+
+              e.stopPropagation();
+              if (dx < 0) goWeek(1);
+              else goWeek(-1);
+            }}
+          >
             <div className="grid grid-cols-7 gap-0.5">
               {weekDays.map((d) => {
                 const key = toDayKey(d);
@@ -271,6 +316,36 @@ export default function Home() {
       </section>
 
       {/* Day picker bottom sheet */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-[205] flex items-end">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/25 backdrop-blur-sm"
+            aria-label="Luk profil"
+            onClick={() => setProfileOpen(false)}
+          />
+          <div className="relative w-full rounded-t-[1.5rem] bg-white/95 px-4 pb-6 pt-4 ring-1 ring-forest-deep/[0.05] sm:px-6">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-forest">Profil</div>
+                <div className="mt-1 text-[12px] font-medium text-evergreen/65">
+                  Brugeroplysninger og indstillinger kommer her.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(false)}
+                className="rounded-xl px-2 py-2 text-evergreen/70 hover:bg-pastel/35"
+                aria-label="Luk"
+              >
+                <span className="text-[18px] leading-none">×</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {dayPickerOpen && (
         <div className="fixed inset-0 z-[210] flex items-end">
           <button
