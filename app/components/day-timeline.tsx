@@ -59,6 +59,7 @@ export function DayTimeline({
   entries: DayEntry[];
   onEntriesChange: (next: DayEntry[]) => void;
 }) {
+  const [isSelecting, setIsSelecting] = useState(false);
   const [eveningExpanded, setEveningExpanded] = useState(false);
 
   type Draft = {
@@ -91,6 +92,13 @@ export function DayTimeline({
   const dragStartHourRef = useRef<number | null>(null);
   const dragOriginClientYRef = useRef<number | null>(null);
   const dragGestureStartedRef = useRef(false);
+
+  // Touch-based selection helpers (iOS Safari tends to be more reliable with touch events).
+  const activeTouchIdRef = useRef<number | null>(null);
+  const touchOriginYRef = useRef<number | null>(null);
+  const touchStartHourRef = useRef<number | null>(null);
+  const touchSelectionStartedRef = useRef(false);
+  const touchSelectionRangeRef = useRef<{ startHour: number; endHour: number } | null>(null);
 
   const dayEnd = eveningExpanded ? EVENING_END : WORK_END;
 
@@ -172,6 +180,7 @@ export function DayTimeline({
       dragStartHourRef.current = null;
       dragOriginClientYRef.current = null;
       dragGestureStartedRef.current = false;
+      setIsSelecting(false);
 
       if (dragSelection && !dragBlocked) {
         openDraftForRange(dragSelection.startHour, dragSelection.endHour);
@@ -186,12 +195,14 @@ export function DayTimeline({
   const handleSlotPointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>, slotStart: number) => {
       if (sheetOpen) return;
+      if (e.pointerType === "touch") return; // touch selection is handled via touch events
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
       activePointerIdRef.current = e.pointerId;
       dragStartHourRef.current = slotStart;
       dragOriginClientYRef.current = e.clientY;
       dragGestureStartedRef.current = false;
+      setIsSelecting(false);
 
       const endHour = slotStart + SLOT_DURATION_HOURS;
       setDragSelection({ startHour: slotStart, endHour });
@@ -237,6 +248,8 @@ export function DayTimeline({
       dragGestureStartedRef.current = true;
       // iOS: prevent native selection/callout while actively dragging.
       e.preventDefault();
+      e.stopPropagation();
+      setIsSelecting(true);
 
       const selStart = Math.min(startHour, currentSlotStart);
       const selEnd = Math.max(startHour, currentSlotStart) + SLOT_DURATION_HOURS;
@@ -265,6 +278,131 @@ export function DayTimeline({
     },
     [finishDrag]
   );
+
+  const findTouchById = (
+    touches: React.TouchList,
+    identifier: number | null
+  ) => {
+    if (identifier == null) return null;
+    for (let i = 0; i < touches.length; i += 1) {
+      const t = touches[i];
+      if (t.identifier === identifier) return t;
+    }
+    return null;
+  };
+
+  const handleSlotTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLButtonElement>, slotStart: number) => {
+      if (sheetOpen) return;
+      if (activeTouchIdRef.current != null) return;
+
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+
+      activeTouchIdRef.current = touch.identifier;
+      touchStartHourRef.current = slotStart;
+      touchOriginYRef.current = touch.clientY;
+      touchSelectionStartedRef.current = false;
+
+      const endHour = slotStart + SLOT_DURATION_HOURS;
+      setDragSelection({ startHour: slotStart, endHour });
+      touchSelectionRangeRef.current = { startHour: slotStart, endHour };
+      setDragBlocked(isRangeBlocked(slotStart, endHour));
+      setIsSelecting(false);
+    },
+    [isRangeBlocked, sheetOpen]
+  );
+
+  const handleSlotTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLButtonElement>) => {
+      const touchId = activeTouchIdRef.current;
+      if (touchId == null) return;
+      if (sheetOpen) return;
+
+      const startHour = touchStartHourRef.current;
+      const originY = touchOriginYRef.current;
+      if (startHour == null || originY == null) return;
+
+      const touch = findTouchById(e.changedTouches, touchId);
+      // iOS sometimes sends touchmove with changedTouches missing; fall back to touches.
+      const activeTouch = touch ?? findTouchById(e.touches, touchId);
+      if (!activeTouch) return;
+
+      const dy = Math.abs(activeTouch.clientY - originY);
+
+      const currentSlotStart = getSlotStartForClientY(activeTouch.clientY);
+      if (currentSlotStart == null) return;
+
+      const selStart = Math.min(startHour, currentSlotStart);
+      const selEnd = Math.max(startHour, currentSlotStart) + SLOT_DURATION_HOURS;
+
+      // If the user hasn't moved enough vertically yet, keep a 1-hour selection.
+      if (!touchSelectionStartedRef.current && dy < DRAG_TAP_THRESHOLD_PX) {
+        const endHour = startHour + SLOT_DURATION_HOURS;
+        setDragSelection({ startHour: startHour, endHour });
+        touchSelectionRangeRef.current = { startHour: startHour, endHour };
+        setDragBlocked(isRangeBlocked(startHour, endHour));
+        return;
+      }
+
+      touchSelectionStartedRef.current = true;
+      setIsSelecting(true);
+
+      // Prevent iOS from scrolling/text selection while the user is selecting.
+      e.preventDefault();
+      e.stopPropagation();
+
+      setDragSelection({ startHour: selStart, endHour: selEnd });
+      touchSelectionRangeRef.current = { startHour: selStart, endHour: selEnd };
+      setDragBlocked(isRangeBlocked(selStart, selEnd));
+    },
+    [getSlotStartForClientY, isRangeBlocked, sheetOpen]
+  );
+
+  const finishTouchSelection = useCallback(() => {
+    activeTouchIdRef.current = null;
+    touchStartHourRef.current = null;
+    touchOriginYRef.current = null;
+    touchSelectionStartedRef.current = false;
+    touchSelectionRangeRef.current = null;
+    setIsSelecting(false);
+    setDragBlocked(false);
+    // dragSelection will be cleared by setting null in touchend below.
+  }, []);
+
+  const handleSlotTouchEnd = useCallback(
+    () => {
+      const touchId = activeTouchIdRef.current;
+      if (touchId == null) return;
+      if (sheetOpen) return;
+
+      const range = touchSelectionRangeRef.current;
+      const startHour = touchStartHourRef.current;
+
+      // Clear selection immediately so the timeline looks stable.
+      setDragSelection(null);
+      setDragBlocked(false);
+      setIsSelecting(false);
+
+      finishTouchSelection();
+
+      if (!range || startHour == null) return;
+      openDraftForRange(range.startHour, range.endHour);
+    },
+    [finishTouchSelection, openDraftForRange, sheetOpen]
+  );
+
+  const handleSlotTouchCancel = useCallback(() => {
+    // Cancel the selection highlight but don't open modal.
+    activeTouchIdRef.current = null;
+    touchStartHourRef.current = null;
+    touchOriginYRef.current = null;
+    touchSelectionStartedRef.current = false;
+    touchSelectionRangeRef.current = null;
+    setDragSelection(null);
+    setDragBlocked(false);
+    setIsSelecting(false);
+  }, []);
 
   const cancelDraft = useCallback(() => {
     setSheetOpen(false);
@@ -439,11 +577,16 @@ export function DayTimeline({
                     "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                     isLastSlot ? "bg-transparent" : "",
                     "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y]",
+                    isSelecting ? "[-webkit-touch-callout:none] [touch-action:none]" : "",
                   ].join(" ")}
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,
                     height: ROW_PX,
                   }}
+                  onTouchStart={(e) => handleSlotTouchStart(e, slotStart)}
+                  onTouchMove={handleSlotTouchMove}
+                  onTouchEnd={handleSlotTouchEnd}
+                  onTouchCancel={handleSlotTouchCancel}
                   onPointerDown={(e) => handleSlotPointerDown(e, slotStart)}
                   onPointerMove={handleSlotPointerMove}
                   onPointerUp={handleSlotPointerUp}
@@ -498,7 +641,7 @@ export function DayTimeline({
       </div>
       {/* Bottom sheet */}
       {sheetOpen && draft && (
-        <div className="fixed inset-0 z-[70] flex items-end">
+        <div className="fixed inset-0 z-[200] flex items-end">
           {/* Backdrop */}
           <button
             type="button"

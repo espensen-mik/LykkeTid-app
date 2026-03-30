@@ -93,6 +93,8 @@ export default function Home() {
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   const [dayDraftKey, setDayDraftKey] = useState<string>("");
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   useEffect(() => {
     const now = new Date();
@@ -100,6 +102,17 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only initialization
     setSelectedDayKey(key);
     setDayLabel(formatDay(now));
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      const el = headerRef.current;
+      if (!el) return;
+      setHeaderHeight(el.getBoundingClientRect().height);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
   const selectedEntries = useMemo(
@@ -148,7 +161,10 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex h-screen w-full flex-col overflow-hidden sm:max-w-xl">
-      <header className="sticky top-0 z-[50] shrink-0 bg-white/55 backdrop-blur-md">
+      <header
+        ref={headerRef}
+        className="fixed top-0 left-0 right-0 z-[100] shrink-0 bg-white/55 backdrop-blur-md"
+      >
         <div
           className="px-3 pt-3 pb-2"
           onTouchStart={(e) => {
@@ -175,8 +191,18 @@ export default function Home() {
           }}
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium tracking-wide text-evergreen/90">
-              LykkeTid
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => goDay(-1)}
+                aria-label="Forrige dag"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              >
+                ‹
+              </button>
+              <div className="text-[12px] font-semibold tracking-wide text-evergreen/80">
+                LykkeTid
+              </div>
             </div>
 
             <button
@@ -190,7 +216,7 @@ export default function Home() {
           </div>
 
           <div className="mt-2">
-            <div className="text-xs font-semibold text-evergreen/60">
+            <div className="text-xs font-semibold tracking-wide text-evergreen/60">
               {selectedDate ? formatMonthYear(selectedDate) : ""}
             </div>
             <div className="mt-1 text-[22px] font-extrabold tracking-tight text-forest">
@@ -239,17 +265,19 @@ export default function Home() {
                       setDayLabel(formatDay(d));
                     }}
                     aria-label={`Vælg ${formatDay(d)}`}
-                    className={[
-                      "rounded-2xl px-1 py-2 text-center transition-colors",
-                      isSelected
-                        ? "border border-accent/35 bg-accent/18"
-                        : "border border-transparent bg-transparent",
-                    ].join(" ")}
+                    className="group rounded-2xl px-1 py-2 text-center transition-colors"
                   >
                     <div className="text-[11px] font-semibold text-evergreen/70">
                       {weekdayNarrow}
                     </div>
-                    <div className="mt-1 text-[16px] font-extrabold text-forest">
+                    <div
+                      className={[
+                        "mt-1 flex h-7 w-7 items-center justify-center rounded-full text-[14px] font-extrabold",
+                        isSelected
+                          ? "bg-accent text-white"
+                          : "text-forest/90 group-hover:bg-pastel/35",
+                      ].join(" ")}
+                    >
                       {d.getDate()}
                     </div>
                   </button>
@@ -260,6 +288,9 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Spacer to offset fixed header */}
+      <div style={{ height: headerHeight }} />
+
       {/* Scrollable day timeline area */}
       <section className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
@@ -269,7 +300,7 @@ export default function Home() {
 
       {/* Day picker bottom sheet */}
       {dayPickerOpen && (
-        <div className="fixed inset-0 z-[90] flex items-end">
+        <div className="fixed inset-0 z-[210] flex items-end">
           <button
             type="button"
             className="absolute inset-0 bg-black/25 backdrop-blur-sm"
