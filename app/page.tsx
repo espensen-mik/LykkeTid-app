@@ -36,8 +36,25 @@ function formatMonthYear(d: Date): string {
   }).format(d);
 }
 
-/** Same on server and first client paint — avoids hydration mismatch */
-const DATE_HEADER_FALLBACK = "\u2026";
+function startOfWeekMonday(d: Date): Date {
+  const day = d.getDay();
+  const diffToMonday = (day + 6) % 7;
+  const out = new Date(d);
+  out.setDate(d.getDate() - diffToMonday);
+  out.setHours(12, 0, 0, 0);
+  return out;
+}
+
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+function getWeekDays(d: Date): Date[] {
+  const start = startOfWeekMonday(d);
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+}
 
 function CalendarIcon({ className }: { className?: string }) {
   return (
@@ -63,7 +80,6 @@ function CalendarIcon({ className }: { className?: string }) {
 
 export default function Home() {
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
-  const [dayLabel, setDayLabel] = useState<string>(DATE_HEADER_FALLBACK);
 
   const [entriesByDay, setEntriesByDay] = useState<Record<string, DayEntry[]>>(
     {}
@@ -80,7 +96,6 @@ export default function Home() {
     const key = toDayKey(now);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only initialization
     setSelectedDayKey(key);
-    setDayLabel(formatDay(now));
   }, []);
 
   useEffect(() => {
@@ -106,13 +121,30 @@ export default function Home() {
 
   const selectedDate = selectedDayKey ? fromDayKey(selectedDayKey) : null;
 
+  const weekDays = useMemo(() => {
+    if (!selectedDate) return [];
+    return getWeekDays(selectedDate);
+  }, [selectedDate]);
+
+  const headerDateText = useMemo(() => {
+    if (!selectedDate) return { weekday: "", dateLine: "" };
+    const weekday = new Intl.DateTimeFormat("da-DK", {
+      weekday: "long",
+    }).format(selectedDate);
+    const dateLine = new Intl.DateTimeFormat("da-DK", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(selectedDate);
+    return { weekday, dateLine };
+  }, [selectedDate]);
+
   const goDay = (deltaDays: number) => {
     if (!selectedDayKey) return;
     const d = fromDayKey(selectedDayKey);
     d.setDate(d.getDate() + deltaDays);
     const key = toDayKey(d);
     setSelectedDayKey(key);
-    setDayLabel(formatDay(d));
   };
 
   const openDayPicker = () => {
@@ -125,20 +157,18 @@ export default function Home() {
 
   const saveDayPicker = () => {
     if (!dayDraftKey) return;
-    const d = fromDayKey(dayDraftKey);
     setSelectedDayKey(dayDraftKey);
-    setDayLabel(formatDay(d));
     setDayPickerOpen(false);
   };
 
   return (
-    <main className="mx-auto flex min-h-screen w-full flex-col sm:max-w-xl">
+    <main className="mx-auto flex h-[100dvh] w-full flex-col overflow-hidden sm:max-w-xl">
       <header
         ref={headerRef}
         className="fixed top-0 left-0 right-0 z-[100] shrink-0 bg-white/55 backdrop-blur-md"
       >
         <div
-          className="px-3 pt-3 pb-2"
+          className="px-3 pt-2 pb-1.5"
           onTouchStart={(e) => {
             if (dayPickerOpen) return;
             const t = e.touches[0];
@@ -162,40 +192,78 @@ export default function Home() {
             else goDay(-1);
           }}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="text-[12px] font-semibold tracking-wide text-evergreen/80">
-                LykkeTid
-              </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-medium tracking-wide text-evergreen/75">
+              LykkeTid
             </div>
 
             <button
               type="button"
               onClick={openDayPicker}
               aria-label="Åbn kalender"
-              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25"
             >
               <CalendarIcon />
             </button>
           </div>
 
-          <div className="mt-2">
-            <div className="text-xs font-semibold tracking-wide text-evergreen/60">
+          <div className="mt-1.5 space-y-0.5">
+            <div className="text-[10px] font-normal text-evergreen/55">
               {selectedDate ? formatMonthYear(selectedDate) : ""}
             </div>
-            <div className="mt-1 text-[22px] font-extrabold tracking-tight text-forest">
-              {dayLabel}
+            <div className="text-[13px] font-normal leading-snug text-evergreen/80">
+              <span className="capitalize">{headerDateText.weekday}</span>
+              <span className="mx-1 text-evergreen/35">·</span>
+              <span>{headerDateText.dateLine}</span>
             </div>
           </div>
 
+          {/* Slim week strip */}
+          <div className="mt-2 border-t border-line-soft/40 pt-2">
+            <div className="grid grid-cols-7 gap-0.5">
+              {weekDays.map((d) => {
+                const key = toDayKey(d);
+                const isSelected = key === selectedDayKey;
+                const weekdayNarrow = new Intl.DateTimeFormat("da-DK", {
+                  weekday: "narrow",
+                }).format(d);
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDayKey(key);
+                    }}
+                    aria-label={`Vælg ${formatDay(d)}`}
+                    className="flex min-w-0 flex-col items-center rounded-lg py-0.5 transition-colors hover:bg-pastel/25"
+                  >
+                    <span className="text-[9px] font-medium uppercase leading-none text-evergreen/50">
+                      {weekdayNarrow}
+                    </span>
+                    <span
+                      className={[
+                        "mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-medium tabular-nums",
+                        isSelected
+                          ? "bg-accent text-white shadow-sm"
+                          : "text-forest/85",
+                      ].join(" ")}
+                    >
+                      {d.getDate()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </header>
 
       {/* Spacer to offset fixed header */}
-      <div style={{ height: headerHeight }} />
+      <div style={{ height: headerHeight }} aria-hidden />
 
-      {/* Full day hour timeline (page scroll) */}
-      <section className="pb-10">
+      {/* Scrollable timeline only — header stays fixed */}
+      <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <DayTimeline
           entries={selectedEntries}
           onEntriesChange={setSelectedEntries}
