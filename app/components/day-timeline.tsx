@@ -1,14 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const DAY_START = 8;
 /** Visible work-day window (08:00–16:00); no evening strip / no timeline scroll */
 const WORK_END = 16;
 const SLOT_DURATION_HOURS = 1;
-
-/** Row height in px — one hour per row */
-const ROW_PX = 48;
 
 const PROJECTS = ["Drift", "LykkeCup", "KlasseBold", "Håndboldtjek"] as const;
 const LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
@@ -70,7 +67,10 @@ export function DayTimeline({
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  /** Hour row height — fills parent so 08:00–16:00 stays visible without scrolling */
+  const [rowPx, setRowPx] = useState(48);
 
   const [dragSelection, setDragSelection] = useState<{
     startHour: number;
@@ -123,6 +123,22 @@ export function DayTimeline({
 
 
   const dayEnd = WORK_END;
+  const slotCount = dayEnd - DAY_START;
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0 && slotCount > 0) {
+        setRowPx(Math.max(14, h / slotCount));
+      }
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [slotCount]);
 
   const labels = useMemo(() => {
     const out: number[] = [];
@@ -130,7 +146,7 @@ export function DayTimeline({
     return out;
   }, [dayEnd]);
 
-  const timelineHeightPx = (dayEnd - DAY_START) * ROW_PX;
+  const timelineHeightPx = slotCount * rowPx;
 
   const openDraftForRange = useCallback(
     (startHour: number, endHour: number) => {
@@ -178,12 +194,11 @@ export function DayTimeline({
       if (!el) return null;
       const rect = el.getBoundingClientRect();
       const y = clientY - rect.top;
-      const slotCount = dayEnd - DAY_START; // e.g. 8 hours
-      const idx = Math.floor(y / ROW_PX);
+      const idx = Math.floor(y / rowPx);
       const clampedIdx = Math.max(0, Math.min(slotCount - 1, idx));
       return DAY_START + clampedIdx;
     },
-    [dayEnd]
+    [rowPx, slotCount]
   );
 
   const resetGestureState = useCallback(() => {
@@ -444,11 +459,12 @@ export function DayTimeline({
   return (
     <>
       <div
-        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+        ref={containerRef}
+        className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
         aria-label="Dagtidslinje"
         data-day-timeline-root="true"
       >
-        <div className="flex px-1 sm:px-0">
+        <div className="flex min-h-0 flex-1 px-1 sm:px-0">
           {/* Left time column */}
           <div
             className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:w-[4.4rem]"
@@ -459,7 +475,7 @@ export function DayTimeline({
               const y =
                 h === dayEnd
                   ? timelineHeightPx - 16
-                  : (h - DAY_START) * ROW_PX + 16;
+                  : (h - DAY_START) * rowPx + 16;
               return (
                 <div
                   key={h}
@@ -513,10 +529,10 @@ export function DayTimeline({
               <div
                 className="pointer-events-none absolute left-2 right-2 z-[6] rounded-lg border px-2 py-1 transition-[top,height] duration-100"
                 style={{
-                  top: (dragSelection.startHour - DAY_START) * ROW_PX + 2,
+                  top: (dragSelection.startHour - DAY_START) * rowPx + 2,
                   height: Math.max(
                     8,
-                    (dragSelection.endHour - dragSelection.startHour) * ROW_PX - 4
+                    (dragSelection.endHour - dragSelection.startHour) * rowPx - 4
                   ),
                 }}
                 aria-hidden
@@ -532,7 +548,7 @@ export function DayTimeline({
               </div>
             )}
 
-            {Array.from({ length: dayEnd - DAY_START }, (_, i) => {
+            {Array.from({ length: slotCount }, (_, i) => {
               const slotStart = DAY_START + i;
               const isLastSlot = slotStart === dayEnd - 1;
               return (
@@ -548,8 +564,8 @@ export function DayTimeline({
                     "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none]",
                   ].join(" ")}
                   style={{
-                    top: (slotStart - DAY_START) * ROW_PX,
-                    height: ROW_PX,
+                    top: (slotStart - DAY_START) * rowPx,
+                    height: rowPx,
                   }}
                   onPointerDown={(e) => handleSlotPointerDown(e, slotStart)}
                   onPointerMove={handleSlotPointerMove}
@@ -582,8 +598,8 @@ export function DayTimeline({
                 <div
                   key={entry.id}
                   style={{
-                    top: (displayStart - DAY_START) * ROW_PX + 2,
-                    height: Math.max(8, durationHours * ROW_PX - 4),
+                    top: (displayStart - DAY_START) * rowPx + 2,
+                    height: Math.max(8, durationHours * rowPx - 4),
                     zIndex: 10 + idx,
                     borderColor: projectStyle.border,
                     background: `linear-gradient(180deg, ${projectStyle.from} 0%, ${projectStyle.to} 100%)`,

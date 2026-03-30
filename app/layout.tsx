@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   description: "Enkel dagsbaseret tidsregistrering",
 };
 
+/** Lets `env(safe-area-inset-*)` match the notch / home indicator on iPhone. */
+export const viewport = {
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -21,9 +26,11 @@ export default function RootLayout({
   return (
     <html
       lang="da"
-      className={`${poppins.variable} h-full antialiased`}
+      className={`${poppins.variable} h-full min-h-dvh antialiased`}
     >
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+      <body className="flex h-full min-h-0 min-h-dvh flex-col overflow-hidden font-sans">
+        {children}
+      </body>
     </html>
   );
 }

@@ -91,25 +91,11 @@ export default function Home() {
   const [profileOpen, setProfileOpen] = useState(false);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const headerRef = useRef<HTMLDivElement | null>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
-
   useEffect(() => {
     const now = new Date();
     const key = toDayKey(now);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only initialization
     setSelectedDayKey(key);
-  }, []);
-
-  useEffect(() => {
-    const update = () => {
-      const el = headerRef.current;
-      if (!el) return;
-      setHeaderHeight(el.getBoundingClientRect().height);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
   }, []);
 
   const selectedEntries = useMemo(
@@ -167,13 +153,10 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto flex h-[100dvh] w-full flex-col overflow-hidden sm:max-w-xl">
-      <header
-        ref={headerRef}
-        className="fixed top-0 left-0 right-0 z-[100] shrink-0 bg-white/55 backdrop-blur-md"
-      >
+    <main className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden sm:max-w-xl">
+      <header className="z-[100] w-full shrink-0 bg-white/55 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div
-          className="px-3 pt-2 pb-1.5"
+          className="px-3 pb-1.5 pt-2"
           onTouchStart={(e) => {
             if (dayPickerOpen) return;
             const t = e.touches[0];
@@ -304,11 +287,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Spacer to offset fixed header */}
-      <div style={{ height: headerHeight }} aria-hidden />
-
-      {/* Fixed 08:00–16:00 grid — no vertical scroll, easier touch drag */}
-      <section className="min-h-0 flex-1 overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {/* Fills remaining viewport; 08:00–16:00 scales to this area (no overlap under header) */}
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <DayTimeline
           entries={selectedEntries}
           onEntriesChange={setSelectedEntries}
