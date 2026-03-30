@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --mint: #eaf9e7;
+  --cream: #e3eed4;
+  --pastel: #c0e6ba;
+  --line: #c0e6ba;
+  --line-soft: #aec3b0;
+  --accent: #4ca771;
+  --accent-mid: #6b9071;
+  --evergreen: #375534;
+  --forest: #013237;
+  --forest-deep: #0f2a1d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-mint: var(--mint);
+  --color-cream: var(--cream);
+  --color-pastel: var(--pastel);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-accent: var(--accent);
+  --color-accent-mid: var(--accent-mid);
+  --color-evergreen: var(--evergreen);
+  --color-forest: var(--forest);
+  --color-forest-deep: var(--forest-deep);
+  --font-sans: var(--font-poppins);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  background: linear-gradient(180deg, var(--cream) 0%, var(--mint) 55%, #f5faf3 100%);
+  color: var(--forest);
+  font-family: var(--font-poppins), system-ui, sans-serif;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--pastel) 75%, transparent);
+  color: var(--forest-deep);
 }
