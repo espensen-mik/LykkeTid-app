@@ -136,58 +136,68 @@ export default function Home() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <div className="px-1 pb-2 pt-5 sm:px-2">
+        <div className="px-2 pb-3 pt-3 sm:px-4">
+          {/* Top app bar */}
           <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium tracking-wide text-evergreen/90">LykkeTid</p>
-            <h1 className="mt-2 min-h-[2.25rem] truncate text-2xl font-bold tracking-tight text-forest sm:min-h-[2.5rem] sm:text-3xl">
-              {dayLabel}
-            </h1>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => goDay(-1)}
+                aria-label="Forrige dag"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              >
+                ‹
+              </button>
+
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold tracking-wide text-evergreen/70">
+                  {selectedDayKey ? new Intl.DateTimeFormat("da-DK", { month: "long" }).format(fromDayKey(selectedDayKey)) : ""}
+                </div>
+                <div className="mt-1 truncate text-[18px] font-extrabold tracking-tight text-forest">
+                  {dayLabel}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openDayPicker}
+                aria-label="Åbn kalender"
+                className="flex h-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 px-3 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              >
+                Kalender
+              </button>
+              <button
+                type="button"
+                onClick={() => goDay(1)}
+                aria-label="Næste dag"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              >
+                ›
+              </button>
+            </div>
           </div>
 
-          {/* Desktop day navigation */}
-          <div className="hidden items-center gap-2 sm:flex">
-            <button
-              type="button"
-              onClick={() => goDay(-1)}
-              aria-label="Forrige dag"
-              className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={openDayPicker}
-              aria-label="Åbn kalender"
-              className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-            >
-              Kalender
-            </button>
-            <button
-              type="button"
-              onClick={() => goDay(1)}
-              aria-label="Næste dag"
-              className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-            >
-              →
-            </button>
-          </div>
-          </div>
-
-          {/* Mobile calendar button */}
-          <div className="mt-3 flex items-center justify-end sm:hidden">
-            <button
-              type="button"
-              onClick={openDayPicker}
-              aria-label="Åbn kalender"
-              className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-            >
-              Kalender
-            </button>
+          {/* Lightweight “event chips” from entries */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {selectedEntries.slice(0, 3).map((e) => (
+              <span
+                key={`${e.id}-chip`}
+                className="inline-flex max-w-[12rem] items-center gap-1 rounded-full border border-line-soft/60 bg-white/45 px-2 py-1 text-[12px] font-semibold text-evergreen/80"
+              >
+                {e.project}
+              </span>
+            ))}
+            {selectedEntries.length > 3 && (
+              <span className="inline-flex rounded-full border border-line-soft/60 bg-white/45 px-2 py-1 text-[12px] font-semibold text-evergreen/70">
+                +{selectedEntries.length - 3}
+              </span>
+            )}
           </div>
 
           {/* Progress bar */}
-          <div className="mt-4 pb-2">
+          <div className="mt-3">
             <div className="flex items-center justify-between text-[12px] font-semibold text-evergreen/60">
               <span>
                 {trackedLabel} / 7,5 t
@@ -209,12 +219,45 @@ export default function Home() {
         aria-label="Tidsregistreringer for i dag"
       >
         {/* Scrollable day view */}
-        <div className="flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+        <div className="flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-24">
           <div className="pb-10">
             <DayTimeline entries={selectedEntries} onEntriesChange={setSelectedEntries} />
           </div>
         </div>
       </section>
+
+      {/* Bottom quick actions (mobile) */}
+      <div className="fixed bottom-0 left-0 right-0 z-[45] border-t border-line-soft/55 bg-white/75 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <button
+            type="button"
+            className="rounded-2xl border border-line-soft/60 bg-white/55 px-3 py-2 text-[14px] font-semibold text-forest shadow-sm hover:bg-pastel/25"
+            onClick={() => {
+              const now = new Date();
+              setSelectedDayKey(toDayKey(now));
+              setDayLabel(formatDay(now));
+            }}
+          >
+            I dag
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/55 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+              onClick={openDayPicker}
+              aria-label="Åbn kalender"
+            >
+              Kalender
+            </button>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/55 text-evergreen/80 shadow-sm">
+              <span className="text-[14px] font-bold" aria-label="Antal blokke">
+                {selectedEntries.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Day picker bottom sheet */}
       {dayPickerOpen && (
