@@ -86,7 +86,7 @@ export function DayTimeline({
     return snappedMinutes / 60;
   };
 
-  const DRAG_TAP_THRESHOLD_PX = 10;
+  const DRAG_TAP_THRESHOLD_PX = 4;
   const activePointerIdRef = useRef<number | null>(null);
   const dragStartHourRef = useRef<number | null>(null);
   const dragOriginClientYRef = useRef<number | null>(null);
@@ -188,6 +188,9 @@ export function DayTimeline({
       if (sheetOpen) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
+      // iOS: stop long-press callouts / text selection.
+      e.preventDefault();
+
       activePointerIdRef.current = e.pointerId;
       dragStartHourRef.current = slotStart;
       dragOriginClientYRef.current = e.clientY;
@@ -235,6 +238,8 @@ export function DayTimeline({
       }
 
       dragGestureStartedRef.current = true;
+      // iOS: prevent native selection/callout while actively dragging.
+      e.preventDefault();
 
       const selStart = Math.min(startHour, currentSlotStart);
       const selEnd = Math.max(startHour, currentSlotStart) + SLOT_DURATION_HOURS;
@@ -324,14 +329,14 @@ export function DayTimeline({
   return (
     <>
       <div
-        className="overflow-hidden bg-transparent px-0 py-0 sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
         aria-label="Dagtidslinje"
         data-day-timeline-root="true"
       >
         <div className="flex px-1 sm:px-0">
           {/* Left time column */}
           <div
-            className="relative shrink-0 w-[4.15rem] sm:w-[4.4rem]"
+            className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:w-[4.4rem]"
             style={{ height: timelineHeightPx }}
           >
             {labels.map((h) => {
@@ -343,7 +348,7 @@ export function DayTimeline({
               return (
                 <div
                   key={h}
-                  className="absolute right-1.5 text-right text-[12px] font-semibold tabular-nums text-evergreen/60"
+                  className="absolute right-1.5 text-right text-[12px] font-semibold tabular-nums text-evergreen/60 select-none [-webkit-user-select:none] [-webkit-touch-callout:none]"
                   aria-hidden
                   style={{
                     top: y,
@@ -370,7 +375,7 @@ export function DayTimeline({
 
           {/* Timeline column */}
           <div
-            className="relative min-w-0 flex-1 border-l border-line-soft/70 bg-[linear-gradient(180deg,rgba(234,249,231,0.22)_0%,rgba(255,255,255,0.72)_100%)]"
+            className="relative min-w-0 flex-1 border-l border-line-soft/70 bg-[linear-gradient(180deg,rgba(234,249,231,0.22)_0%,rgba(255,255,255,0.72)_100%)] select-none [-webkit-user-select:none] [-webkit-touch-callout:none]"
               style={{ height: timelineHeightPx }}
               ref={timelineRef}
           >
@@ -436,6 +441,7 @@ export function DayTimeline({
                     "hover:bg-pastel/22 active:bg-pastel/32",
                     "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                     isLastSlot ? "bg-transparent" : "",
+                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none]",
                   ].join(" ")}
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,
