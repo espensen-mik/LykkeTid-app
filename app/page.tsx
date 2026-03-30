@@ -36,27 +36,6 @@ function formatMonthYear(d: Date): string {
   }).format(d);
 }
 
-function startOfWeekMonday(d: Date): Date {
-  // JS: Sunday=0 ... Saturday=6. We want Monday as the first day.
-  const day = d.getDay();
-  const diffToMonday = (day + 6) % 7; // Monday => 0
-  const out = new Date(d);
-  out.setDate(d.getDate() - diffToMonday);
-  out.setHours(12, 0, 0, 0);
-  return out;
-}
-
-function addDays(d: Date, days: number): Date {
-  const out = new Date(d);
-  out.setDate(out.getDate() + days);
-  return out;
-}
-
-function getWeekDays(d: Date): Date[] {
-  const start = startOfWeekMonday(d);
-  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-}
-
 /** Same on server and first client paint — avoids hydration mismatch */
 const DATE_HEADER_FALLBACK = "\u2026";
 
@@ -136,13 +115,6 @@ export default function Home() {
     setDayLabel(formatDay(d));
   };
 
-  const goWeek = (deltaWeeks: number) => goDay(deltaWeeks * 7);
-
-  const weekDays = useMemo(() => {
-    if (!selectedDate) return [];
-    return getWeekDays(selectedDate);
-  }, [selectedDate]);
-
   const openDayPicker = () => {
     if (!selectedDayKey) return;
     setDayDraftKey(selectedDayKey);
@@ -160,7 +132,7 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto flex h-screen w-full flex-col overflow-hidden sm:max-w-xl">
+    <main className="mx-auto flex min-h-screen w-full flex-col sm:max-w-xl">
       <header
         ref={headerRef}
         className="fixed top-0 left-0 right-0 z-[100] shrink-0 bg-white/55 backdrop-blur-md"
@@ -192,14 +164,6 @@ export default function Home() {
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => goDay(-1)}
-                aria-label="Forrige dag"
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line-soft/60 bg-white/45 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-              >
-                ‹
-              </button>
               <div className="text-[12px] font-semibold tracking-wide text-evergreen/80">
                 LykkeTid
               </div>
@@ -224,78 +188,18 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Week strip */}
-          <div className="mt-3 rounded-2xl border border-line-soft/45 bg-white/30 px-2 py-2">
-            <div className="flex items-center justify-between px-1">
-              <button
-                type="button"
-                onClick={() => goWeek(-1)}
-                aria-label="Forrige uge"
-                className="rounded-xl px-2 py-2 text-evergreen/70 hover:bg-pastel/25"
-              >
-                ‹
-              </button>
-              <div className="text-[12px] font-semibold text-evergreen/60">
-                Uge
-              </div>
-              <button
-                type="button"
-                onClick={() => goWeek(1)}
-                aria-label="Næste uge"
-                className="rounded-xl px-2 py-2 text-evergreen/70 hover:bg-pastel/25"
-              >
-                ›
-              </button>
-            </div>
-
-            <div className="mt-2 grid grid-cols-7 gap-1 px-1">
-              {weekDays.map((d) => {
-                const key = toDayKey(d);
-                const isSelected = key === selectedDayKey;
-                const weekdayNarrow = new Intl.DateTimeFormat("da-DK", {
-                  weekday: "narrow",
-                }).format(d);
-
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDayKey(key);
-                      setDayLabel(formatDay(d));
-                    }}
-                    aria-label={`Vælg ${formatDay(d)}`}
-                    className="group rounded-2xl px-1 py-2 text-center transition-colors"
-                  >
-                    <div className="text-[11px] font-semibold text-evergreen/70">
-                      {weekdayNarrow}
-                    </div>
-                    <div
-                      className={[
-                        "mt-1 flex h-7 w-7 items-center justify-center rounded-full text-[14px] font-extrabold",
-                        isSelected
-                          ? "bg-accent text-white"
-                          : "text-forest/90 group-hover:bg-pastel/35",
-                      ].join(" ")}
-                    >
-                      {d.getDate()}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </header>
 
       {/* Spacer to offset fixed header */}
       <div style={{ height: headerHeight }} />
 
-      {/* Scrollable day timeline area */}
-      <section className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
-          <DayTimeline entries={selectedEntries} onEntriesChange={setSelectedEntries} />
-        </div>
+      {/* Full day hour timeline (page scroll) */}
+      <section className="pb-10">
+        <DayTimeline
+          entries={selectedEntries}
+          onEntriesChange={setSelectedEntries}
+        />
       </section>
 
       {/* Day picker bottom sheet */}

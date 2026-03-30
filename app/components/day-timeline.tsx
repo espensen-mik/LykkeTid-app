@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 const DAY_START = 8;
-const WORK_END = 16;
 const EVENING_END = 20;
 const SLOT_DURATION_HOURS = 1;
 
@@ -60,7 +59,6 @@ export function DayTimeline({
   onEntriesChange: (next: DayEntry[]) => void;
 }) {
   const [isSelecting, setIsSelecting] = useState(false);
-  const [eveningExpanded, setEveningExpanded] = useState(false);
 
   type Draft = {
     id?: string;
@@ -87,7 +85,8 @@ export function DayTimeline({
     return snappedMinutes / 60;
   };
 
-  const DRAG_TAP_THRESHOLD_PX = 4;
+  const DRAG_TAP_THRESHOLD_PX = 2;
+  const pointerTouchActiveRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const dragStartHourRef = useRef<number | null>(null);
   const dragOriginClientYRef = useRef<number | null>(null);
@@ -100,15 +99,8 @@ export function DayTimeline({
   const touchSelectionStartedRef = useRef(false);
   const touchSelectionRangeRef = useRef<{ startHour: number; endHour: number } | null>(null);
 
-  const dayEnd = eveningExpanded ? EVENING_END : WORK_END;
-
-  useEffect(() => {
-    // If the user already has entries after 16:00, keep the evening timeline visible.
-    if (entries.some((e) => e.endHour > WORK_END)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- allow UX auto-expansion
-      setEveningExpanded(true);
-    }
-  }, [entries]);
+  // Always show the full day timeline (including evenings).
+  const dayEnd = EVENING_END;
 
   const labels = useMemo(() => {
     const out: number[] = [];
@@ -180,6 +172,7 @@ export function DayTimeline({
       dragStartHourRef.current = null;
       dragOriginClientYRef.current = null;
       dragGestureStartedRef.current = false;
+      pointerTouchActiveRef.current = false;
       setIsSelecting(false);
 
       if (dragSelection && !dragBlocked) {
@@ -195,10 +188,10 @@ export function DayTimeline({
   const handleSlotPointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>, slotStart: number) => {
       if (sheetOpen) return;
-      if (e.pointerType === "touch") return; // touch selection is handled via touch events
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
       activePointerIdRef.current = e.pointerId;
+      if (e.pointerType === "touch") pointerTouchActiveRef.current = true;
       dragStartHourRef.current = slotStart;
       dragOriginClientYRef.current = e.clientY;
       dragGestureStartedRef.current = false;
@@ -295,6 +288,7 @@ export function DayTimeline({
     (e: React.TouchEvent<HTMLButtonElement>, slotStart: number) => {
       if (sheetOpen) return;
       if (activeTouchIdRef.current != null) return;
+      if (pointerTouchActiveRef.current) return; // pointer-event drag handles touch on iOS
 
       const touch = e.changedTouches[0];
       if (!touch) return;
@@ -315,6 +309,7 @@ export function DayTimeline({
 
   const handleSlotTouchMove = useCallback(
     (e: React.TouchEvent<HTMLButtonElement>) => {
+      if (pointerTouchActiveRef.current) return; // pointer-event drag handles touch on iOS
       const touchId = activeTouchIdRef.current;
       if (touchId == null) return;
       if (sheetOpen) return;
@@ -372,6 +367,7 @@ export function DayTimeline({
 
   const handleSlotTouchEnd = useCallback(
     () => {
+      if (pointerTouchActiveRef.current) return; // pointer-event drag handles touch on iOS
       const touchId = activeTouchIdRef.current;
       if (touchId == null) return;
       if (sheetOpen) return;
@@ -393,6 +389,7 @@ export function DayTimeline({
   );
 
   const handleSlotTouchCancel = useCallback(() => {
+    if (pointerTouchActiveRef.current) return; // pointer-event drag handles touch on iOS
     // Cancel the selection highlight but don't open modal.
     activeTouchIdRef.current = null;
     touchStartHourRef.current = null;
@@ -495,17 +492,6 @@ export function DayTimeline({
               );
             })}
 
-            {/* Expand to track after 16:00 */}
-            {!eveningExpanded && (
-              <button
-                type="button"
-                onClick={() => setEveningExpanded(true)}
-                aria-label="Vis aften-timer"
-                className="absolute bottom-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-line-soft/70 bg-white/75 text-accent shadow-[0_10px_30px_-20px_rgba(15,42,29,0.25)] active:bg-pastel/30"
-              >
-                <span className="text-[18px] leading-none">+</span>
-              </button>
-            )}
           </div>
 
           {/* Timeline column */}
