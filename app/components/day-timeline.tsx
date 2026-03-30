@@ -86,10 +86,11 @@ export function DayTimeline({
     return snappedMinutes / 60;
   };
 
-  // Prevent duplicate opening (pointer-up + click).
-  const suppressClickRef = useRef(false);
+  const DRAG_TAP_THRESHOLD_PX = 10;
   const activePointerIdRef = useRef<number | null>(null);
   const dragStartHourRef = useRef<number | null>(null);
+  const dragOriginClientYRef = useRef<number | null>(null);
+  const dragGestureStartedRef = useRef(false);
 
   const dayEnd = eveningExpanded ? EVENING_END : WORK_END;
 
@@ -131,11 +132,6 @@ export function DayTimeline({
     [entries, dayEnd]
   );
 
-  const openDraftForSlot = useCallback(
-    (startHour: number) => openDraftForRange(startHour, startHour + 1),
-    [openDraftForRange]
-  );
-
   const openDraftForEntry = useCallback((entry: DayEntry) => {
     setDraft({
       id: entry.id,
@@ -174,11 +170,8 @@ export function DayTimeline({
 
       activePointerIdRef.current = null;
       dragStartHourRef.current = null;
-
-      // Allow the click handler to run again after the browser fires it.
-      setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 250);
+      dragOriginClientYRef.current = null;
+      dragGestureStartedRef.current = false;
 
       if (dragSelection && !dragBlocked) {
         openDraftForRange(dragSelection.startHour, dragSelection.endHour);
@@ -195,9 +188,10 @@ export function DayTimeline({
       if (sheetOpen) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
-      suppressClickRef.current = true;
       activePointerIdRef.current = e.pointerId;
       dragStartHourRef.current = slotStart;
+      dragOriginClientYRef.current = e.clientY;
+      dragGestureStartedRef.current = false;
 
       const endHour = slotStart + SLOT_DURATION_HOURS;
       setDragSelection({ startHour: slotStart, endHour });
@@ -220,8 +214,27 @@ export function DayTimeline({
       const startHour = dragStartHourRef.current;
       if (startHour == null) return;
 
+      const originY = dragOriginClientYRef.current;
+      const dy = originY == null ? 0 : Math.abs(e.clientY - originY);
+
       const currentSlotStart = getSlotStartForClientY(e.clientY);
       if (currentSlotStart == null) return;
+
+      // Distinguish tap vs drag:
+      // - If vertical movement is small => keep a 1-hour selection.
+      // - Once movement passes the threshold => expand selection as you move.
+      if (!dragGestureStartedRef.current && dy < DRAG_TAP_THRESHOLD_PX) {
+        const endHour = startHour + SLOT_DURATION_HOURS;
+        setDragSelection((prev) =>
+          prev && prev.startHour === startHour && prev.endHour === endHour
+            ? prev
+            : { startHour, endHour }
+        );
+        setDragBlocked(isRangeBlocked(startHour, endHour));
+        return;
+      }
+
+      dragGestureStartedRef.current = true;
 
       const selStart = Math.min(startHour, currentSlotStart);
       const selEnd = Math.max(startHour, currentSlotStart) + SLOT_DURATION_HOURS;
@@ -427,10 +440,6 @@ export function DayTimeline({
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,
                     height: ROW_PX,
-                  }}
-                  onClick={() => {
-                    if (suppressClickRef.current) return;
-                    openDraftForSlot(slotStart);
                   }}
                   onPointerDown={(e) => handleSlotPointerDown(e, slotStart)}
                   onPointerMove={handleSlotPointerMove}
