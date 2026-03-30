@@ -92,6 +92,7 @@ export default function Home() {
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
   useEffect(() => {
@@ -111,6 +112,20 @@ export default function Home() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+
+  // Keep 08:00 at the top of the scroll area (Safari can restore scroll offset).
+  useEffect(() => {
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    const reset = () => {
+      el.scrollTop = 0;
+    };
+    reset();
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(reset);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedDayKey]);
 
   const selectedEntries = useMemo(
     () => (selectedDayKey ? entriesByDay[selectedDayKey] ?? [] : []),
@@ -308,7 +323,10 @@ export default function Home() {
       <div style={{ height: headerHeight }} aria-hidden />
 
       {/* Scrollable timeline only — header stays fixed */}
-      <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <section
+        ref={timelineScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
         <DayTimeline
           entries={selectedEntries}
           onEntriesChange={setSelectedEntries}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 const DAY_START = 8;
 const EVENING_END = 20;
@@ -85,27 +85,25 @@ export function DayTimeline({
     return snappedMinutes / 60;
   };
 
-  const DRAG_TAP_THRESHOLD_PX = 2;
-  /** Touch: wait before tap/drag selection so vertical scroll isn’t mistaken for a slot gesture */
-  const ARM_DELAY_MS = 280;
-  /** If the finger moves farther than this before the arm delay, treat as scroll — cancel */
-  const SCROLL_CANCEL_THRESHOLD_PX = 14;
+  /** Mouse: tiny wiggle before expanding range */
+  const DRAG_TAP_THRESHOLD_PX = 4;
+  /** Touch: vertical move past this starts drag selection (no long-press) */
+  const DRAG_START_PX = 10;
+  /** Touch: same-slot vertical move past this = scroll intent, release pointer */
+  const SCROLL_CANCEL_PX = 40;
+  /** Touch: max movement for a tap → 1-hour block */
+  const TAP_MAX_MOVE_PX = 14;
 
   const activePointerIdRef = useRef<number | null>(null);
   const dragStartHourRef = useRef<number | null>(null);
   const dragOriginClientYRef = useRef<number | null>(null);
   const dragGestureStartedRef = useRef(false);
 
-  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<{
-    pointerId: number;
-    slotStart: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
   const pendingTargetRef = useRef<HTMLButtonElement | null>(null);
-  const pendingListenersCleanupRef = useRef<(() => void) | null>(null);
-  const armedRef = useRef(false);
+  const touchPointerDownSlotRef = useRef<number | null>(null);
+  const touchOriginXRef = useRef<number | null>(null);
+  const touchOriginYRef = useRef<number | null>(null);
+  const gestureScrollCancelledRef = useRef(false);
 
   const dragSelectionRef = useRef(dragSelection);
   const dragBlockedRef = useRef(dragBlocked);
@@ -127,12 +125,6 @@ export function DayTimeline({
     []
   );
 
-  useEffect(() => {
-    return () => {
-      if (armTimerRef.current != null) clearTimeout(armTimerRef.current);
-      if (pendingListenersCleanupRef.current) pendingListenersCleanupRef.current();
-    };
-  }, []);
 
   // Always show the full day timeline (including evenings).
   const dayEnd = EVENING_END;
@@ -199,26 +191,9 @@ export function DayTimeline({
     [dayEnd]
   );
 
-  const clearArmTimer = useCallback(() => {
-    if (armTimerRef.current != null) {
-      clearTimeout(armTimerRef.current);
-      armTimerRef.current = null;
-    }
-  }, []);
-
-  const removePendingListeners = useCallback(() => {
-    if (pendingListenersCleanupRef.current) {
-      pendingListenersCleanupRef.current();
-      pendingListenersCleanupRef.current = null;
-    }
-  }, []);
-
-  const cancelPendingTouch = useCallback(() => {
-    clearArmTimer();
-    removePendingListeners();
-    const pend = pendingRef.current;
+  const resetGestureState = useCallback(() => {
     const el = pendingTargetRef.current;
-    const pid = pend?.pointerId ?? activePointerIdRef.current;
+    const pid = activePointerIdRef.current;
     if (el != null && pid != null) {
       try {
         el.releasePointerCapture(pid);
@@ -226,27 +201,22 @@ export function DayTimeline({
         // no-op
       }
     }
-    pendingRef.current = null;
     pendingTargetRef.current = null;
-    armedRef.current = false;
+    touchPointerDownSlotRef.current = null;
+    touchOriginXRef.current = null;
+    touchOriginYRef.current = null;
+    gestureScrollCancelledRef.current = false;
     activePointerIdRef.current = null;
     dragStartHourRef.current = null;
     dragOriginClientYRef.current = null;
     dragGestureStartedRef.current = false;
     setIsSelecting(false);
     resetDragSelection();
-  }, [clearArmTimer, removePendingListeners, resetDragSelection]);
+  }, [resetDragSelection]);
 
   const finishDrag = useCallback(
     (pointerId: number) => {
       if (activePointerIdRef.current !== pointerId) return;
-
-      activePointerIdRef.current = null;
-      dragStartHourRef.current = null;
-      dragOriginClientYRef.current = null;
-      dragGestureStartedRef.current = false;
-      armedRef.current = false;
-      setIsSelecting(false);
 
       const sel = dragSelectionRef.current;
       const blocked = dragBlockedRef.current;
@@ -254,9 +224,9 @@ export function DayTimeline({
         openDraftForRange(sel.startHour, sel.endHour);
       }
 
-      resetDragSelection();
+      resetGestureState();
     },
-    [openDraftForRange, resetDragSelection]
+    [openDraftForRange, resetGestureState]
   );
 
   const handleSlotPointerDown = useCallback(
@@ -264,13 +234,13 @@ export function DayTimeline({
       if (sheetOpen) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
-      // Desktop / mouse: immediate selection (no delay)
+      // Desktop / mouse: show 1-hour selection immediately; modal opens on pointer up
       if (e.pointerType === "mouse") {
-        armedRef.current = true;
         activePointerIdRef.current = e.pointerId;
         dragStartHourRef.current = slotStart;
         dragOriginClientYRef.current = e.clientY;
         dragGestureStartedRef.current = false;
+        pendingTargetRef.current = e.currentTarget;
         setIsSelecting(false);
 
         const endHour = slotStart + SLOT_DURATION_HOURS;
@@ -287,64 +257,69 @@ export function DayTimeline({
         return;
       }
 
-      // Touch: defer *visual* selection, but capture the pointer synchronously here.
-      // (iOS/Safari only reliably tracks drags if setPointerCapture runs in pointerdown.)
-      cancelPendingTouch();
+      // Touch: no modal on down; capture synchronously so moves stay tracked on iOS
+      resetGestureState();
 
       const pointerId = e.pointerId;
-      const originX = e.clientX;
-      const originY = e.clientY;
-      const el = e.currentTarget;
-
-      pendingRef.current = { pointerId, slotStart, originX, originY };
-      pendingTargetRef.current = el;
-      armedRef.current = false;
+      pendingTargetRef.current = e.currentTarget;
+      touchPointerDownSlotRef.current = slotStart;
+      touchOriginXRef.current = e.clientX;
+      touchOriginYRef.current = e.clientY;
+      gestureScrollCancelledRef.current = false;
+      activePointerIdRef.current = pointerId;
+      dragGestureStartedRef.current = false;
+      dragStartHourRef.current = null;
 
       try {
-        el.setPointerCapture(pointerId);
+        e.currentTarget.setPointerCapture(pointerId);
       } catch {
         // no-op
       }
-
-      armTimerRef.current = setTimeout(() => {
-        armTimerRef.current = null;
-        const pend = pendingRef.current;
-        if (!pend || pend.pointerId !== pointerId) return;
-
-        armedRef.current = true;
-        activePointerIdRef.current = pointerId;
-        dragStartHourRef.current = pend.slotStart;
-        dragOriginClientYRef.current = pend.originY;
-        dragGestureStartedRef.current = false;
-        setIsSelecting(false);
-
-        const endHour = pend.slotStart + SLOT_DURATION_HOURS;
-        applyDragSelection(
-          { startHour: pend.slotStart, endHour },
-          isRangeBlocked(pend.slotStart, endHour)
-        );
-
-        pendingRef.current = null;
-      }, ARM_DELAY_MS);
     },
-    [applyDragSelection, cancelPendingTouch, isRangeBlocked, sheetOpen]
+    [applyDragSelection, isRangeBlocked, resetGestureState, sheetOpen]
   );
 
   const handleSlotPointerMove = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       const pointerId = e.pointerId;
 
-      // Touch: waiting for arm — cancel if finger moves enough to mean “scroll”
-      if (!armedRef.current && pendingRef.current?.pointerId === pointerId) {
-        const p = pendingRef.current;
-        const dist = Math.hypot(e.clientX - p.originX, e.clientY - p.originY);
-        if (dist > SCROLL_CANCEL_THRESHOLD_PX) {
-          cancelPendingTouch();
+      if (e.pointerType === "touch") {
+        if (gestureScrollCancelledRef.current) return;
+        if (activePointerIdRef.current !== pointerId) return;
+
+        if (!dragGestureStartedRef.current) {
+          const p = touchPointerDownSlotRef.current;
+          if (p == null) return;
+          const currentSlot = getSlotStartForClientY(e.clientY);
+          if (currentSlot == null) return;
+          const oy = touchOriginYRef.current;
+          const ox = touchOriginXRef.current;
+          if (oy == null || ox == null) return;
+          const dy = Math.abs(e.clientY - oy);
+
+          if (dy >= SCROLL_CANCEL_PX && currentSlot === p) {
+            gestureScrollCancelledRef.current = true;
+            resetGestureState();
+            return;
+          }
+
+          if (currentSlot !== p || dy >= DRAG_START_PX) {
+            dragGestureStartedRef.current = true;
+            dragStartHourRef.current = p;
+            dragOriginClientYRef.current = oy;
+          } else {
+            return;
+          }
         }
-        return;
       }
 
-      if (activePointerIdRef.current !== pointerId) return;
+      if (e.pointerType === "mouse") {
+        if (activePointerIdRef.current !== pointerId) return;
+      } else if (e.pointerType === "touch") {
+        if (activePointerIdRef.current !== pointerId) return;
+        if (!dragGestureStartedRef.current) return;
+      }
+
       const startHour = dragStartHourRef.current;
       if (startHour == null) return;
 
@@ -356,8 +331,8 @@ export function DayTimeline({
 
       const slotChanged = currentSlotStart !== startHour;
 
-      // Keep a 1-hour pill until the finger moves enough or enters another hour
       if (
+        e.pointerType === "mouse" &&
         !dragGestureStartedRef.current &&
         dy < DRAG_TAP_THRESHOLD_PX &&
         !slotChanged
@@ -383,41 +358,52 @@ export function DayTimeline({
         isRangeBlocked(selStart, selEnd)
       );
     },
-    [applyDragSelection, cancelPendingTouch, getSlotStartForClientY, isRangeBlocked]
+    [applyDragSelection, getSlotStartForClientY, isRangeBlocked, resetGestureState]
   );
 
   const handleSlotPointerUp = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       const pointerId = e.pointerId;
 
-      if (pendingRef.current?.pointerId === pointerId && !armedRef.current) {
-        cancelPendingTouch();
+      if (e.pointerType === "touch") {
+        if (gestureScrollCancelledRef.current) {
+          resetGestureState();
+          return;
+        }
+        if (activePointerIdRef.current !== pointerId) return;
+
+        if (!dragGestureStartedRef.current) {
+          const p = touchPointerDownSlotRef.current;
+          const ox = touchOriginXRef.current;
+          const oy = touchOriginYRef.current;
+          if (p != null && ox != null && oy != null) {
+            const dist = Math.hypot(e.clientX - ox, e.clientY - oy);
+            if (dist < TAP_MAX_MOVE_PX) {
+              const end = p + SLOT_DURATION_HOURS;
+              if (!isRangeBlocked(p, end)) {
+                openDraftForRange(p, end);
+              }
+            }
+          }
+          resetGestureState();
+          return;
+        }
+
+        finishDrag(pointerId);
         return;
       }
 
       finishDrag(pointerId);
     },
-    [cancelPendingTouch, finishDrag]
+    [finishDrag, isRangeBlocked, openDraftForRange, resetGestureState]
   );
 
   const handleSlotPointerCancel = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
-      const pointerId = e.pointerId;
-      if (pendingRef.current?.pointerId === pointerId && !armedRef.current) {
-        cancelPendingTouch();
-        return;
-      }
-      if (activePointerIdRef.current === pointerId) {
-        activePointerIdRef.current = null;
-        dragStartHourRef.current = null;
-        dragOriginClientYRef.current = null;
-        dragGestureStartedRef.current = false;
-        armedRef.current = false;
-        setIsSelecting(false);
-        resetDragSelection();
-      }
+      if (activePointerIdRef.current !== e.pointerId) return;
+      resetGestureState();
     },
-    [cancelPendingTouch, resetDragSelection]
+    [resetGestureState]
   );
 
   const cancelDraft = useCallback(() => {
@@ -480,7 +466,7 @@ export function DayTimeline({
   return (
     <>
       <div
-        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:pan-y] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
         aria-label="Dagtidslinje"
         data-day-timeline-root="true"
       >
@@ -515,9 +501,9 @@ export function DayTimeline({
 
           {/* Timeline column */}
           <div
-            className="relative min-w-0 flex-1 border-l border-line-soft/70 bg-[linear-gradient(180deg,rgba(234,249,231,0.22)_0%,rgba(255,255,255,0.72)_100%)] select-none [-webkit-user-select:none] [-webkit-touch-callout:none]"
-              style={{ height: timelineHeightPx }}
-              ref={timelineRef}
+            className="relative min-w-0 flex-1 border-l border-line-soft/70 bg-[linear-gradient(180deg,rgba(234,249,231,0.22)_0%,rgba(255,255,255,0.72)_100%)] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+            style={{ height: timelineHeightPx, touchAction: isSelecting ? "none" : "pan-y" }}
+            ref={timelineRef}
           >
             {/* Faint “add” affordance near the bottom (touch-friendly) */}
             <div
@@ -539,7 +525,7 @@ export function DayTimeline({
                   className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-evergreen/15 bg-white/60 px-3 py-1 text-[12px] font-semibold text-evergreen/60 shadow-[0_8px_30px_rgba(15,42,29,0.08)]"
                   aria-hidden
                 >
-                  Hold et øjeblik på en time for at tilføje — scroll frit i listen
+                  Tryk for én time, eller træk ned/op for flere timer
                 </div>
               </>
             )}
@@ -581,8 +567,8 @@ export function DayTimeline({
                     "hover:bg-pastel/22 active:bg-pastel/32",
                     "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                     isLastSlot ? "bg-transparent" : "",
-                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y]",
-                    isSelecting ? "[-webkit-touch-callout:none] [touch-action:none]" : "",
+                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]",
+                    isSelecting ? "[touch-action:none]" : "[touch-action:pan-y]",
                   ].join(" ")}
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,
