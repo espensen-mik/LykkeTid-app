@@ -188,9 +188,6 @@ export function DayTimeline({
       if (sheetOpen) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
 
-      // iOS: stop long-press callouts / text selection.
-      e.preventDefault();
-
       activePointerIdRef.current = e.pointerId;
       dragStartHourRef.current = slotStart;
       dragOriginClientYRef.current = e.clientY;
@@ -329,14 +326,14 @@ export function DayTimeline({
   return (
     <>
       <div
-        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
         aria-label="Dagtidslinje"
         data-day-timeline-root="true"
       >
         <div className="flex px-1 sm:px-0">
           {/* Left time column */}
           <div
-            className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:w-[4.4rem]"
+            className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y] sm:w-[4.4rem]"
             style={{ height: timelineHeightPx }}
           >
             {labels.map((h) => {
@@ -441,7 +438,7 @@ export function DayTimeline({
                     "hover:bg-pastel/22 active:bg-pastel/32",
                     "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                     isLastSlot ? "bg-transparent" : "",
-                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none]",
+                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y]",
                   ].join(" ")}
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,

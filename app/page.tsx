@@ -129,12 +129,15 @@ export default function Home() {
 
   return (
     <main
-      className="mx-auto flex min-h-full w-full max-w-xl flex-1 flex-col px-4 py-6 sm:px-6 sm:py-8"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
+      className="mx-auto flex h-screen w-full max-w-xl flex-1 flex-col overflow-hidden px-4 py-0 sm:px-6"
     >
-      <header className="shrink-0">
-        <div className="flex items-center justify-between gap-3">
+      <header
+        className="sticky top-0 z-[50] shrink-0 bg-white/55 backdrop-blur-md"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="px-1 pb-2 pt-5 sm:px-2">
+          <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium tracking-wide text-evergreen/90">LykkeTid</p>
             <h1 className="mt-2 min-h-[2.25rem] truncate text-2xl font-bold tracking-tight text-forest sm:min-h-[2.5rem] sm:text-3xl">
@@ -169,43 +172,47 @@ export default function Home() {
               →
             </button>
           </div>
-        </div>
-
-        {/* Mobile calendar button */}
-        <div className="mt-3 flex items-center justify-end sm:hidden">
-          <button
-            type="button"
-            onClick={openDayPicker}
-            aria-label="Åbn kalender"
-            className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
-          >
-            Kalender
-          </button>
-        </div>
-
-        {/* Progress bar */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between text-[12px] font-semibold text-evergreen/60">
-            <span>
-              {trackedLabel} / 7,5 t
-            </span>
-            <span>{progressPercent}%</span>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line-soft/30">
-            <div
-              className="h-full rounded-full bg-accent"
-              style={{ width: `${Math.max(2, progressPercent)}%` }}
-            />
+
+          {/* Mobile calendar button */}
+          <div className="mt-3 flex items-center justify-end sm:hidden">
+            <button
+              type="button"
+              onClick={openDayPicker}
+              aria-label="Åbn kalender"
+              className="rounded-xl border border-line-soft/60 bg-white/50 px-3 py-2 text-evergreen/80 shadow-sm hover:bg-pastel/25"
+            >
+              Kalender
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-4 pb-2">
+            <div className="flex items-center justify-between text-[12px] font-semibold text-evergreen/60">
+              <span>
+                {trackedLabel} / 7,5 t
+              </span>
+              <span>{progressPercent}%</span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line-soft/30">
+              <div
+                className="h-full rounded-full bg-accent"
+                style={{ width: `${Math.max(2, progressPercent)}%` }}
+              />
+            </div>
           </div>
         </div>
       </header>
 
       <section
-        className="mt-6 flex flex-1 flex-col gap-0"
+        className="flex flex-1 flex-col overflow-hidden"
         aria-label="Tidsregistreringer for i dag"
       >
-        <div className="flex-1">
-          <DayTimeline entries={selectedEntries} onEntriesChange={setSelectedEntries} />
+        {/* Scrollable day view */}
+        <div className="flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+          <div className="pb-10">
+            <DayTimeline entries={selectedEntries} onEntriesChange={setSelectedEntries} />
+          </div>
         </div>
       </section>
 
