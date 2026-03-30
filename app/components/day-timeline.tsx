@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 const DAY_START = 8;
-const EVENING_END = 20;
+/** Visible work-day window (08:00–16:00); no evening strip / no timeline scroll */
+const WORK_END = 16;
 const SLOT_DURATION_HOURS = 1;
 
 /** Row height in px — one hour per row */
@@ -58,8 +59,6 @@ export function DayTimeline({
   entries: DayEntry[];
   onEntriesChange: (next: DayEntry[]) => void;
 }) {
-  const [isSelecting, setIsSelecting] = useState(false);
-
   type Draft = {
     id?: string;
     startHour: number;
@@ -89,8 +88,6 @@ export function DayTimeline({
   const DRAG_TAP_THRESHOLD_PX = 4;
   /** Touch: vertical move past this starts drag selection (no long-press) */
   const DRAG_START_PX = 10;
-  /** Touch: same-slot vertical move past this = scroll intent, release pointer */
-  const SCROLL_CANCEL_PX = 40;
   /** Touch: max movement for a tap → 1-hour block */
   const TAP_MAX_MOVE_PX = 14;
 
@@ -103,7 +100,6 @@ export function DayTimeline({
   const touchPointerDownSlotRef = useRef<number | null>(null);
   const touchOriginXRef = useRef<number | null>(null);
   const touchOriginYRef = useRef<number | null>(null);
-  const gestureScrollCancelledRef = useRef(false);
 
   const dragSelectionRef = useRef(dragSelection);
   const dragBlockedRef = useRef(dragBlocked);
@@ -126,8 +122,7 @@ export function DayTimeline({
   );
 
 
-  // Always show the full day timeline (including evenings).
-  const dayEnd = EVENING_END;
+  const dayEnd = WORK_END;
 
   const labels = useMemo(() => {
     const out: number[] = [];
@@ -205,12 +200,10 @@ export function DayTimeline({
     touchPointerDownSlotRef.current = null;
     touchOriginXRef.current = null;
     touchOriginYRef.current = null;
-    gestureScrollCancelledRef.current = false;
     activePointerIdRef.current = null;
     dragStartHourRef.current = null;
     dragOriginClientYRef.current = null;
     dragGestureStartedRef.current = false;
-    setIsSelecting(false);
     resetDragSelection();
   }, [resetDragSelection]);
 
@@ -241,7 +234,6 @@ export function DayTimeline({
         dragOriginClientYRef.current = e.clientY;
         dragGestureStartedRef.current = false;
         pendingTargetRef.current = e.currentTarget;
-        setIsSelecting(false);
 
         const endHour = slotStart + SLOT_DURATION_HOURS;
         applyDragSelection(
@@ -265,7 +257,6 @@ export function DayTimeline({
       touchPointerDownSlotRef.current = slotStart;
       touchOriginXRef.current = e.clientX;
       touchOriginYRef.current = e.clientY;
-      gestureScrollCancelledRef.current = false;
       activePointerIdRef.current = pointerId;
       dragGestureStartedRef.current = false;
       dragStartHourRef.current = null;
@@ -284,7 +275,6 @@ export function DayTimeline({
       const pointerId = e.pointerId;
 
       if (e.pointerType === "touch") {
-        if (gestureScrollCancelledRef.current) return;
         if (activePointerIdRef.current !== pointerId) return;
 
         if (!dragGestureStartedRef.current) {
@@ -293,15 +283,8 @@ export function DayTimeline({
           const currentSlot = getSlotStartForClientY(e.clientY);
           if (currentSlot == null) return;
           const oy = touchOriginYRef.current;
-          const ox = touchOriginXRef.current;
-          if (oy == null || ox == null) return;
+          if (oy == null) return;
           const dy = Math.abs(e.clientY - oy);
-
-          if (dy >= SCROLL_CANCEL_PX && currentSlot === p) {
-            gestureScrollCancelledRef.current = true;
-            resetGestureState();
-            return;
-          }
 
           if (currentSlot !== p || dy >= DRAG_START_PX) {
             dragGestureStartedRef.current = true;
@@ -348,7 +331,6 @@ export function DayTimeline({
       dragGestureStartedRef.current = true;
       e.preventDefault();
       e.stopPropagation();
-      setIsSelecting(true);
 
       const selStart = Math.min(startHour, currentSlotStart);
       const selEnd = Math.max(startHour, currentSlotStart) + SLOT_DURATION_HOURS;
@@ -358,7 +340,7 @@ export function DayTimeline({
         isRangeBlocked(selStart, selEnd)
       );
     },
-    [applyDragSelection, getSlotStartForClientY, isRangeBlocked, resetGestureState]
+    [applyDragSelection, getSlotStartForClientY, isRangeBlocked]
   );
 
   const handleSlotPointerUp = useCallback(
@@ -366,10 +348,6 @@ export function DayTimeline({
       const pointerId = e.pointerId;
 
       if (e.pointerType === "touch") {
-        if (gestureScrollCancelledRef.current) {
-          resetGestureState();
-          return;
-        }
         if (activePointerIdRef.current !== pointerId) return;
 
         if (!dragGestureStartedRef.current) {
@@ -466,14 +444,14 @@ export function DayTimeline({
   return (
     <>
       <div
-        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:pan-y] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+        className="overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
         aria-label="Dagtidslinje"
         data-day-timeline-root="true"
       >
         <div className="flex px-1 sm:px-0">
           {/* Left time column */}
           <div
-            className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:pan-y] sm:w-[4.4rem]"
+            className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:w-[4.4rem]"
             style={{ height: timelineHeightPx }}
           >
             {labels.map((h) => {
@@ -502,7 +480,7 @@ export function DayTimeline({
           {/* Timeline column */}
           <div
             className="relative min-w-0 flex-1 border-l border-line-soft/70 bg-[linear-gradient(180deg,rgba(234,249,231,0.22)_0%,rgba(255,255,255,0.72)_100%)] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
-            style={{ height: timelineHeightPx, touchAction: isSelecting ? "none" : "pan-y" }}
+            style={{ height: timelineHeightPx, touchAction: "none" }}
             ref={timelineRef}
           >
             {/* Faint “add” affordance near the bottom (touch-friendly) */}
@@ -525,7 +503,7 @@ export function DayTimeline({
                   className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-evergreen/15 bg-white/60 px-3 py-1 text-[12px] font-semibold text-evergreen/60 shadow-[0_8px_30px_rgba(15,42,29,0.08)]"
                   aria-hidden
                 >
-                  Tryk for én time, eller træk ned/op for flere timer
+                  Tryk for én time, eller træk for flere timer
                 </div>
               </>
             )}
@@ -567,8 +545,7 @@ export function DayTimeline({
                     "hover:bg-pastel/22 active:bg-pastel/32",
                     "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                     isLastSlot ? "bg-transparent" : "",
-                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]",
-                    isSelecting ? "[touch-action:none]" : "[touch-action:pan-y]",
+                    "select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none]",
                   ].join(" ")}
                   style={{
                     top: (slotStart - DAY_START) * ROW_PX,
@@ -591,7 +568,11 @@ export function DayTimeline({
             })}
 
             {entries.map((entry, idx) => {
-              const durationHours = entry.endHour - entry.startHour;
+              const displayStart = Math.max(entry.startHour, DAY_START);
+              const displayEnd = Math.min(entry.endHour, dayEnd);
+              if (displayEnd <= displayStart) return null;
+
+              const durationHours = displayEnd - displayStart;
               const durationMinutes = Math.round(durationHours * 60);
               const projectStyle = PROJECT_STYLES[entry.project] ?? PROJECT_STYLES.Drift;
 
@@ -601,7 +582,7 @@ export function DayTimeline({
                 <div
                   key={entry.id}
                   style={{
-                    top: (entry.startHour - DAY_START) * ROW_PX + 2,
+                    top: (displayStart - DAY_START) * ROW_PX + 2,
                     height: Math.max(8, durationHours * ROW_PX - 4),
                     zIndex: 10 + idx,
                     borderColor: projectStyle.border,
