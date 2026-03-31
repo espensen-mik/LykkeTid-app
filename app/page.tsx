@@ -172,12 +172,18 @@ export default function Home() {
             const dx = t.clientX - start.x;
             const dy = t.clientY - start.y;
 
-            if (Math.abs(dx) < 60) return;
-            if (Math.abs(dy) > 80) return;
+            // Slightly lower horizontal threshold and tighter vertical guard
+            if (Math.abs(dx) < 40) return;
+            if (Math.abs(dy) > 60) return;
 
             // Swipe left => next day
-            if (dx < 0) goDay(1);
-            else goDay(-1);
+            if (dx < 0) {
+              e.preventDefault();
+              goDay(1);
+            } else {
+              e.preventDefault();
+              goDay(-1);
+            }
           }}
         >
           <div className="flex items-center justify-between gap-2">

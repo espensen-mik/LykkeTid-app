@@ -458,13 +458,14 @@ export function DayTimeline({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
-        aria-label="Dagtidslinje"
-        data-day-timeline-root="true"
-      >
-        <div className="flex min-h-0 flex-1 px-1 sm:px-0">
+      <div className="relative flex h-full w-full flex-1">
+        <div
+          ref={containerRef}
+          className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent px-0 py-0 select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] [touch-action:none] sm:rounded-[1.25rem] sm:border sm:border-line-soft/55 sm:bg-white/55 sm:px-3 sm:py-3 sm:shadow-sm sm:shadow-forest-deep/[0.06] sm:ring-1 sm:ring-forest-deep/[0.03] sm:backdrop-blur-sm"
+          aria-label="Dagtidslinje"
+          data-day-timeline-root="true"
+        >
+          <div className="flex min-h-0 flex-1 px-1 sm:px-0">
           {/* Left time column */}
           <div
             className="relative shrink-0 w-[4.15rem] select-none [-webkit-user-select:none] [-webkit-touch-callout:none] [touch-action:none] sm:w-[4.4rem]"
@@ -621,6 +622,30 @@ export function DayTimeline({
               );
             })}
           </div>
+          </div>
+        </div>
+
+        {/* Small “outside work hours” add button – stays near bottom center */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.15rem,env(safe-area-inset-bottom)+0.4rem)] flex justify-center">
+          <button
+            type="button"
+            className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-evergreen/25 bg-white/90 px-3 py-1.5 text-[11px] font-semibold text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.14)] backdrop-blur-sm hover:bg-mint/80 hover:text-forest/95 active:scale-[0.97] transition"
+            onClick={() => {
+              setDraft({
+                startHour: 17,
+                endHour: 18,
+                project: PROJECTS[0],
+                location: LOCATIONS[0],
+                note: "",
+              });
+              setSheetOpen(true);
+            }}
+          >
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent/12 text-[13px] leading-none text-accent">
+              +
+            </span>
+            <span>Tilføj udenfor 8–16</span>
+          </button>
         </div>
       </div>
       {/* Bottom sheet */}
@@ -665,11 +690,17 @@ export function DayTimeline({
                 </div>
                 {(() => {
                   const startOptions: number[] = [];
-                  const dayStartMinutes = DAY_START * 60;
-                  const dayEndMinutes = dayEnd * 60;
+                  const workStartMinutes = DAY_START * 60;
+                  const workEndMinutes = dayEnd * 60;
+                  const isOutsideWorkHours =
+                    draft.startHour < DAY_START || draft.endHour > dayEnd;
 
-                  // End must be at least +15 minutes, so limit the last selectable start.
-                  for (let m = dayStartMinutes; m <= dayEndMinutes - 15; m += 15) {
+                  const minStartMinutes = isOutsideWorkHours ? 0 : workStartMinutes;
+                  const maxStartMinutes = isOutsideWorkHours
+                    ? 24 * 60 - 15
+                    : workEndMinutes - 15; // End must be at least +15 minutes.
+
+                  for (let m = minStartMinutes; m <= maxStartMinutes; m += 15) {
                     startOptions.push(m / 60);
                   }
 
@@ -679,18 +710,21 @@ export function DayTimeline({
                       onChange={(e) => {
                         const nextStartHour = Number(e.target.value);
                         const snappedStart = snapToQuarterHour(nextStartHour);
+                        const isOutsideWorkHours =
+                          snappedStart < DAY_START || draft.endHour > dayEnd;
 
                         setDraft((d) => {
                           if (!d) return d;
 
                           const minEnd = snappedStart + 0.25;
                           const nextEnd = d.endHour < minEnd ? minEnd : d.endHour;
-                          const clampedEnd = Math.min(nextEnd, dayEnd);
+                          const endLimit = isOutsideWorkHours ? 24 : dayEnd;
+                          const clampedEnd = Math.min(nextEnd, endLimit);
 
                           // Ensure end > start.
                           const finalEnd =
                             clampedEnd <= snappedStart
-                              ? Math.min(snappedStart + 0.25, dayEnd)
+                              ? Math.min(snappedStart + 0.25, endLimit)
                               : clampedEnd;
 
                           return {
@@ -722,11 +756,17 @@ export function DayTimeline({
                   const snappedStartMinutes =
                     Math.round(startTotalMinutes / 15) * 15;
 
+                  const isOutsideWorkHours =
+                    draft.startHour < DAY_START || draft.endHour > dayEnd;
+
                   const dayEndMinutes = dayEnd * 60;
+                  const endLimitMinutes = isOutsideWorkHours
+                    ? 24 * 60
+                    : dayEndMinutes;
                   const endOptions: number[] = [];
                   for (
                     let m = snappedStartMinutes + 15;
-                    m <= dayEndMinutes;
+                    m <= endLimitMinutes;
                     m += 15
                   ) {
                     endOptions.push(m / 60);
