@@ -39,7 +39,15 @@ const PROJECT_OPTIONS = [
     subcategories: [],
     style: { from: "#94a3b8", to: "#64748b", border: "rgba(100,116,139,0.35)" },
   },
-] as const;
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  subcategories: readonly string[];
+  style: { from: string; to: string; border: string };
+}[];
+
+type ProjectOption = (typeof PROJECT_OPTIONS)[number];
+type ProjectId = ProjectOption["id"];
 
 const LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
 
@@ -55,7 +63,7 @@ export type DayEntry = {
   id: string;
   startHour: number;
   endHour: number;
-  project: string;
+  project: ProjectId;
   subcategory: string | null;
   location: (typeof LOCATIONS)[number];
 };
@@ -71,7 +79,7 @@ export function DayTimeline({
     id?: string;
     startHour: number;
     endHour: number;
-    project: string;
+    project: ProjectId;
     subcategory: string | null;
     location: (typeof LOCATIONS)[number];
   };
@@ -159,12 +167,26 @@ export function DayTimeline({
 
   const timelineHeightPx = slotCount * rowPx;
   const projectById = useMemo(
-    () => new Map(PROJECT_OPTIONS.map((p) => [p.id, p])),
+    () => new Map<ProjectId, ProjectOption>(PROJECT_OPTIONS.map((p) => [p.id, p])),
+    []
+  );
+  const projectIdSet = useMemo(
+    () => new Set<string>(PROJECT_OPTIONS.map((p) => p.id)),
     []
   );
 
+  const isProjectId = useCallback(
+    (value: string): value is ProjectId => projectIdSet.has(value),
+    [projectIdSet]
+  );
+
+  const toProjectId = useCallback(
+    (value: string): ProjectId => (isProjectId(value) ? value : PROJECT_OPTIONS[0].id),
+    [isProjectId]
+  );
+
   const getProjectOption = useCallback(
-    (projectId: string) => projectById.get(projectId) ?? PROJECT_OPTIONS[0],
+    (projectId: ProjectId) => projectById.get(projectId) ?? PROJECT_OPTIONS[0],
     [projectById]
   );
 
@@ -813,13 +835,13 @@ export function DayTimeline({
                 <select
                   value={draft.project}
                   onChange={(e) => {
-                    const nextProjectId = e.target.value;
+                    const nextProjectId = toProjectId(e.target.value);
                     setDraft((d) => {
                       if (!d) return d;
                       const nextProject = getProjectOption(nextProjectId);
                       const keepsSubcategory =
                         d.subcategory != null &&
-                        nextProject.subcategories.includes(d.subcategory);
+                        nextProject.subcategories.some((sub) => sub === d.subcategory);
                       return {
                         ...d,
                         project: nextProjectId,
@@ -844,7 +866,7 @@ export function DayTimeline({
                   </div>
                   <select
                     value={draft.subcategory ?? "__none__"}
-                    onChange={(e) =>
+                  onChange={(e) =>
                       setDraft((d) =>
                         d
                           ? {
