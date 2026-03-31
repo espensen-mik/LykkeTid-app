@@ -158,32 +158,8 @@ export default function Home() {
 
   const goWeek = (deltaWeeks: number) => goDay(deltaWeeks * 7);
 
-  const handleOpenDatePicker = () => {
-    const el = datePickerRef.current;
-    if (!el) return;
-    // Prefer modern showPicker when available (Safari / mobile browsers)
-    const anyEl = el as HTMLInputElement & { showPicker?: () => void };
-    if (typeof anyEl.showPicker === "function") {
-      anyEl.showPicker();
-    } else {
-      el.click();
-    }
-  };
-
   return (
     <main className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden sm:max-w-xl">
-      {/* Hidden native date picker driven by the calendar icon */}
-      <input
-        ref={datePickerRef}
-        type="date"
-        className="absolute h-0 w-0 opacity-0 pointer-events-none"
-        value={selectedDayKey || todayKey}
-        onChange={(e) => {
-          const value = e.target.value;
-          if (!value) return;
-          goToDayKey(value);
-        }}
-      />
       <header className="z-[100] w-full shrink-0 bg-white/55 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="px-3 pb-1.5 pt-2">
           <div className="flex items-center justify-between gap-2">
@@ -194,12 +170,35 @@ export default function Home() {
             <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
-                onClick={handleOpenDatePicker}
-                aria-label="Åbn kalender"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25"
+                aria-label="Gå til i dag"
+                onClick={() => {
+                  if (!todayKey) return;
+                  goToDayKey(todayKey);
+                }}
+                className={[
+                  "flex h-9 items-center rounded-xl border px-3 text-[12px] font-semibold transition",
+                  isTodaySelected
+                    ? "border-line-soft/50 bg-white/75 text-evergreen/45"
+                    : "border-line-soft/70 bg-white/90 text-evergreen/85 shadow-sm hover:bg-pastel/25",
+                ].join(" ")}
               >
-                <CalendarIcon />
+                I dag
               </button>
+              <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25">
+                <CalendarIcon />
+                <input
+                  ref={datePickerRef}
+                  type="date"
+                  aria-label="Åbn kalender"
+                  className="absolute inset-0 opacity-0"
+                  value={selectedDayKey || todayKey}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    goToDayKey(value);
+                  }}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => setProfileOpen(true)}
@@ -220,27 +219,11 @@ export default function Home() {
 
           <div className="mt-1.5 space-y-0.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[10px] font-normal text-evergreen/55">
+              <div className="text-[11px] font-semibold text-evergreen/70">
                 {selectedDate ? formatMonthYear(selectedDate) : ""}
               </div>
-              <button
-                type="button"
-                aria-label="Gå til i dag"
-                onClick={() => {
-                  if (!todayKey) return;
-                  goToDayKey(todayKey);
-                }}
-                className={[
-                  "rounded-full border px-3 py-1 text-[10px] font-semibold transition",
-                  isTodaySelected
-                    ? "border-line-soft/50 bg-white/80 text-evergreen/45"
-                    : "border-line-soft/70 bg-white/90 text-evergreen/80 shadow-sm hover:bg-pastel/25",
-                ].join(" ")}
-              >
-                I dag
-              </button>
             </div>
-            <div className="text-[13px] font-normal leading-snug text-evergreen/80">
+            <div className="text-[15px] font-semibold leading-snug text-evergreen">
               <span className="capitalize">{headerDateText.weekday}</span>
               <span className="mx-1 text-evergreen/35">·</span>
               <span>{headerDateText.dateLine}</span>
@@ -335,7 +318,7 @@ export default function Home() {
         <button
           type="button"
           aria-label="Forrige dag"
-          className="pointer-events-auto absolute left-3 top-1/2 z-[130] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          className="pointer-events-auto absolute left-3 top-1/2 z-[120] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
           onClick={() => goDay(-1)}
         >
           <span className="text-[18px] leading-none">‹</span>
@@ -343,7 +326,7 @@ export default function Home() {
         <button
           type="button"
           aria-label="Næste dag"
-          className="pointer-events-auto absolute right-3 top-1/2 z-[130] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          className="pointer-events-auto absolute right-3 top-1/2 z-[120] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
           onClick={() => goDay(1)}
         >
           <span className="text-[18px] leading-none">›</span>

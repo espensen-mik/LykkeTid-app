@@ -641,7 +641,7 @@ export function DayTimeline({
       </div>
       {/* Bottom sheet */}
       {sheetOpen && draft && (
-        <div className="fixed inset-0 z-[200] flex items-end">
+        <div className="fixed inset-0 z-[300] flex items-end">
           {/* Backdrop */}
           <button
             type="button"
