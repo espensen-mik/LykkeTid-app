@@ -3,6 +3,7 @@
 import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
+import { Clock3 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -310,7 +311,7 @@ export default function AdminPage() {
 
   if (authLoading || profileLoading) {
     return (
-      <main className="mx-auto flex min-h-dvh w-full items-center justify-center px-4">
+      <main className="mx-auto flex h-full min-h-0 w-full overflow-y-auto px-4">
         <div className="rounded-xl border border-line-soft/45 bg-white/75 px-4 py-2 text-[13px] font-medium text-evergreen/75">
           Indlæser...
         </div>
@@ -324,7 +325,7 @@ export default function AdminPage() {
 
   if (profile?.role !== "admin") {
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-xl items-center justify-center px-4">
+      <main className="mx-auto flex h-full min-h-0 w-full max-w-xl overflow-y-auto px-4">
         <div className="w-full rounded-2xl border border-line-soft/60 bg-white/80 p-6 shadow-[0_16px_45px_-32px_rgba(15,42,29,0.38)]">
           <h1 className="text-[20px] font-bold text-forest">Ingen adgang</h1>
           <p className="mt-1 text-[13px] text-evergreen/70">
@@ -344,10 +345,13 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto h-full min-h-0 w-full max-w-6xl overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-bold tracking-tight text-forest">Admin</h1>
+          <h1 className="flex items-center gap-2 text-[26px] font-bold tracking-tight text-forest">
+            <Clock3 className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
+            <span>LykkeTid Admin</span>
+          </h1>
           <p className="mt-1 text-[13px] text-evergreen/70">
             Projekter og underpunkter
           </p>
@@ -394,51 +398,6 @@ export default function AdminPage() {
           {adminDataError}
         </div>
       ) : null}
-
-      <section className="mt-6 rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-        <h2 className="text-[16px] font-semibold text-forest">Opret projekt</h2>
-        <form onSubmit={handleCreateProject} className="mt-3 grid gap-2 sm:grid-cols-3">
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => {
-              const nextName = e.target.value;
-              setProjectName(nextName);
-              setProjectSlug(slugify(nextName));
-            }}
-            placeholder="Navn"
-            className="w-full rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[13px] text-forest outline-none focus:ring-2 focus:ring-accent/30"
-            required
-          />
-          <input
-            type="text"
-            value={projectSlug}
-            onChange={(e) => setProjectSlug(slugify(e.target.value))}
-            placeholder="Slug"
-            className="w-full rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[13px] text-forest outline-none focus:ring-2 focus:ring-accent/30"
-            required
-          />
-          <input
-            type="number"
-            value={projectSortOrder}
-            onChange={(e) => setProjectSortOrder(e.target.value)}
-            placeholder="Sortering"
-            className="w-full rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[13px] text-forest outline-none focus:ring-2 focus:ring-accent/30"
-          />
-          <button
-            type="submit"
-            disabled={creatingProject}
-            className="rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-60 sm:col-span-3 sm:w-fit"
-          >
-            {creatingProject ? "Gemmer..." : "Opret projekt"}
-          </button>
-        </form>
-        {createProjectError ? (
-          <div className="mt-2 text-[12px] font-medium text-rose-700">
-            {createProjectError}
-          </div>
-        ) : null}
-      </section>
 
       {adminDataLoading ? (
         <div className="mt-6 flex items-center justify-center">
@@ -592,9 +551,9 @@ export default function AdminPage() {
         <Image
           src="/lykkeliga_logo.svg"
           alt="LykkeLiga"
-          width={120}
-          height={22}
-          className="h-[18px] w-auto opacity-60"
+          width={180}
+          height={34}
+          className="h-[28px] w-auto opacity-60"
           priority={false}
         />
       </div>
