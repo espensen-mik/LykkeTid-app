@@ -686,8 +686,8 @@ export default function Home() {
           </div>
         ) : null}
         {entriesLoading ? (
-          <div className="mx-3 mt-1 rounded-lg border border-line-soft/60 bg-white/70 px-3 py-1.5 text-[11px] font-medium text-evergreen/70">
-            Henter tidsregistreringer...
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-evergreen/20 border-t-accent bg-white/45 backdrop-blur-sm" />
           </div>
         ) : null}
         <div
