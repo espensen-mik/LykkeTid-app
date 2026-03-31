@@ -165,13 +165,11 @@ export default function Home() {
         <div className="px-3 pb-1.5 pt-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-evergreen">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/70 ring-1 ring-line-soft/45 shadow-[0_2px_8px_rgba(15,42,29,0.08)]">
-                <Clock3
-                  className="h-[14px] w-[14px] text-accent"
-                  strokeWidth={2.2}
-                  aria-hidden="true"
-                />
-              </span>
+              <Clock3
+                className="h-[17px] w-[17px]"
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
               <span className="text-[17px] font-bold tracking-tight">LykkeTid</span>
             </div>
 
