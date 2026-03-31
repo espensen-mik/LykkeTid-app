@@ -523,21 +523,45 @@ export default function AdminPage() {
             {(() => {
               const palette = [
                 "#4ca771",
-                "#f59e0b",
-                "#7c3aed",
-                "#e11d48",
-                "#0ea5e9",
-                "#64748b",
-                "#16a34a",
-                "#b45309",
+                "#6b9071",
+                "#375534",
+                "#c0e6ba",
+                "#5f7f66",
+                "#84b18f",
+                "#f4b860",
+                "#7a9f83",
               ];
-              const chartRows = timeUsageByProject.filter((row) => row.totalHours > 0);
-              const totalHours = chartRows.reduce((sum, row) => sum + row.totalHours, 0);
-              const segments = buildPieSegments(chartRows);
-              const gradient =
-                segments.length === 0
-                  ? "conic-gradient(#d1d5db 0deg 360deg)"
-                  : `conic-gradient(${segments
+              const allRows = timeUsageByProject.filter((row) => row.totalHours > 0);
+              const monthRows = timeUsageByProject.filter(
+                (row) => row.currentMonthHours > 0
+              );
+              const allTotal = allRows.reduce((sum, row) => sum + row.totalHours, 0);
+              const monthTotal = monthRows.reduce(
+                (sum, row) => sum + row.currentMonthHours,
+                0
+              );
+              const allSegments = buildPieSegments(
+                allRows.map((row) => ({ projectName: row.projectName, totalHours: row.totalHours }))
+              );
+              const monthSegments = buildPieSegments(
+                monthRows.map((row) => ({
+                  projectName: row.projectName,
+                  totalHours: row.currentMonthHours,
+                }))
+              );
+              const allGradient =
+                allSegments.length === 0
+                  ? "conic-gradient(#d9e5d3 0deg 360deg)"
+                  : `conic-gradient(${allSegments
+                      .map((segment, i) => {
+                        const color = palette[i % palette.length];
+                        return `${color} ${segment.start}deg ${segment.end}deg`;
+                      })
+                      .join(", ")})`;
+              const monthGradient =
+                monthSegments.length === 0
+                  ? "conic-gradient(#d9e5d3 0deg 360deg)"
+                  : `conic-gradient(${monthSegments
                       .map((segment, i) => {
                         const color = palette[i % palette.length];
                         return `${color} ${segment.start}deg ${segment.end}deg`;
@@ -545,21 +569,45 @@ export default function AdminPage() {
                       .join(", ")})`;
 
               return (
-                <div className="mt-3 flex flex-wrap items-center gap-6">
-                  <div
-                    className="h-44 w-44 rounded-full border border-line-soft/50"
-                    style={{ background: gradient }}
-                    aria-label="Fordeling af timer på projekter"
-                  />
+                <div className="mt-3 space-y-5">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
+                      <div className="text-[12px] font-semibold text-evergreen/75">
+                        Al tid
+                      </div>
+                      <div className="mt-2 flex items-center justify-center">
+                        <div
+                          className="h-40 w-40 rounded-full border border-line-soft/45 shadow-[inset_0_1px_3px_rgba(15,42,29,0.08)]"
+                          style={{ background: allGradient }}
+                          aria-label="Fordeling af samlet tid på projekter"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
+                      <div className="text-[12px] font-semibold text-evergreen/75">
+                        Denne måned
+                      </div>
+                      <div className="mt-2 flex items-center justify-center">
+                        <div
+                          className="h-40 w-40 rounded-full border border-line-soft/45 shadow-[inset_0_1px_3px_rgba(15,42,29,0.08)]"
+                          style={{ background: monthGradient }}
+                          aria-label="Fordeling af månedens tid på projekter"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="min-w-[16rem] flex-1 space-y-1.5">
-                    {chartRows.length === 0 ? (
+                    {allRows.length === 0 ? (
                       <div className="text-[13px] text-evergreen/65">
                         Ingen tidsdata endnu.
                       </div>
                     ) : (
-                      chartRows.map((row, i) => {
+                      allRows.map((row, i) => {
                         const color = palette[i % palette.length];
-                        const pct = totalHours > 0 ? (row.totalHours / totalHours) * 100 : 0;
+                        const pctAll = allTotal > 0 ? (row.totalHours / allTotal) * 100 : 0;
+                        const pctMonth =
+                          monthTotal > 0 ? (row.currentMonthHours / monthTotal) * 100 : 0;
                         return (
                           <div
                             key={row.projectName}
@@ -576,7 +624,8 @@ export default function AdminPage() {
                               </span>
                             </div>
                             <span className="text-evergreen/70">
-                              {formatHours(row.totalHours)} t ({pct.toFixed(0)}%)
+                              I alt {formatHours(row.totalHours)} t ({pctAll.toFixed(0)}%) · Måned{" "}
+                              {formatHours(row.currentMonthHours)} t ({pctMonth.toFixed(0)}%)
                             </span>
                           </div>
                         );
