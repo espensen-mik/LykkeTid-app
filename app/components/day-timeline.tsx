@@ -58,10 +58,12 @@ export function DayTimeline({
   entries,
   onEntriesChange,
   projectOptions,
+  onOpenEntryForm,
 }: {
   entries: DayEntry[];
   onEntriesChange: (next: DayEntry[]) => void;
   projectOptions: TimelineProjectOption[];
+  onOpenEntryForm?: () => void | Promise<void>;
 }) {
   type Draft = {
     id?: string;
@@ -211,9 +213,10 @@ export function DayTimeline({
         subcategory: null,
         location: LOCATIONS[0],
       });
+      void onOpenEntryForm?.();
       setSheetOpen(true);
     },
-    [defaultProjectId, entries, dayEnd]
+    [defaultProjectId, entries, dayEnd, onOpenEntryForm]
   );
 
   const openDraftForEntry = useCallback((entry: DayEntry) => {
@@ -225,8 +228,9 @@ export function DayTimeline({
       subcategory: entry.subcategory ?? null,
       location: entry.location as Draft["location"],
     });
+    void onOpenEntryForm?.();
     setSheetOpen(true);
-  }, []);
+  }, [onOpenEntryForm]);
 
   const isRangeBlocked = useCallback(
     (startHour: number, endHour: number) =>
@@ -676,6 +680,7 @@ export function DayTimeline({
                 subcategory: null,
                 location: LOCATIONS[0],
               });
+              void onOpenEntryForm?.();
               setSheetOpen(true);
             }}
           >

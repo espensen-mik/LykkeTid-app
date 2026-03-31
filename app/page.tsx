@@ -9,7 +9,7 @@ import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 import { Clock3 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -210,6 +210,49 @@ export default function Home() {
   const selectedDayKeyRef = useRef(selectedDayKey);
   const userId = session?.user?.id ?? null;
 
+  const reloadProjectOptions = useCallback(async (targetUserId: string | null = userId) => {
+    if (!targetUserId) return;
+    setProjectsError("");
+
+    const [{ data: projectsData, error: projectsFetchError }, { data: subData, error: subsFetchError }] =
+      await Promise.all([
+        supabase
+          .from("projects")
+          .select("id, name, slug, is_active, sort_order, created_at")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true }),
+        supabase
+          .from("project_subcategories")
+          .select("id, project_id, name, is_active, sort_order, created_at")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true }),
+      ]);
+
+    if (projectsFetchError || subsFetchError) {
+      setProjectsError("Kunne ikke hente projekter");
+      return;
+    }
+
+    const projects = (projectsData ?? []) as ProjectRow[];
+    const subcategories = (subData ?? []) as ProjectSubcategoryRow[];
+    const groupedSubs = new Map<string, { id: string; label: string }[]>();
+    for (const sub of subcategories) {
+      const list = groupedSubs.get(sub.project_id) ?? [];
+      list.push({ id: sub.id, label: sub.name });
+      groupedSubs.set(sub.project_id, list);
+    }
+
+    const mapped: TimelineProjectOption[] = projects.map((project) => ({
+      id: project.slug,
+      slug: project.slug,
+      label: project.name,
+      subcategories: groupedSubs.get(project.id) ?? [],
+    }));
+    setProjectOptions(mapped);
+  }, [userId]);
+
   useEffect(() => {
     let isActive = true;
 
@@ -218,6 +261,13 @@ export default function Home() {
       if (!isActive) return;
       setSession(data.session ?? null);
       setAuthLoading(false);
+      const nextUserId = data.session?.user?.id ?? null;
+      if (nextUserId) {
+        void reloadProjectOptions(nextUserId);
+      } else {
+        setProjectOptions([]);
+        setProjectsError("");
+      }
     };
 
     initSession();
@@ -227,13 +277,20 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthLoading(false);
+      const nextUserId = nextSession?.user?.id ?? null;
+      if (nextUserId) {
+        void reloadProjectOptions(nextUserId);
+      } else {
+        setProjectOptions([]);
+        setProjectsError("");
+      }
     });
 
     return () => {
       isActive = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [reloadProjectOptions]);
 
   useEffect(() => {
     let isActive = true;
@@ -274,71 +331,6 @@ export default function Home() {
       isActive = false;
     };
   }, [session]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const fetchProjectData = async () => {
-      if (!userId) {
-        if (isActive) {
-          setProjectOptions([]);
-          setProjectsError("");
-        }
-        return;
-      }
-
-      setProjectsError("");
-
-      const [{ data: projectsData, error: projectsFetchError }, { data: subData, error: subsFetchError }] =
-        await Promise.all([
-          supabase
-            .from("projects")
-            .select("id, name, slug, is_active, sort_order, created_at")
-            .eq("is_active", true)
-            .order("sort_order", { ascending: true })
-            .order("name", { ascending: true }),
-          supabase
-            .from("project_subcategories")
-            .select("id, project_id, name, is_active, sort_order, created_at")
-            .eq("is_active", true)
-            .order("sort_order", { ascending: true })
-            .order("name", { ascending: true }),
-        ]);
-
-      if (!isActive) return;
-
-      if (projectsFetchError || subsFetchError) {
-        setProjectsError("Kunne ikke hente projekter");
-        setProjectOptions([]);
-        return;
-      }
-
-      const projects = (projectsData ?? []) as ProjectRow[];
-      const subcategories = (subData ?? []) as ProjectSubcategoryRow[];
-
-      const groupedSubs = new Map<string, { id: string; label: string }[]>();
-      for (const sub of subcategories) {
-        const list = groupedSubs.get(sub.project_id) ?? [];
-        list.push({ id: sub.id, label: sub.name });
-        groupedSubs.set(sub.project_id, list);
-      }
-
-      const mapped: TimelineProjectOption[] = projects.map((project) => ({
-        id: project.slug,
-        slug: project.slug,
-        label: project.name,
-        subcategories: groupedSubs.get(project.id) ?? [],
-      }));
-
-      setProjectOptions(mapped);
-    };
-
-    void fetchProjectData();
-
-    return () => {
-      isActive = false;
-    };
-  }, [userId]);
 
   async function fetchDayEntries(dayKey: string, forUserId: string) {
     const requestId = ++fetchRequestIdRef.current;
@@ -706,6 +698,7 @@ export default function Home() {
             entries={dayEntries}
             onEntriesChange={syncDayEntries}
             projectOptions={projectOptions}
+            onOpenEntryForm={reloadProjectOptions}
           />
         </div>
 
