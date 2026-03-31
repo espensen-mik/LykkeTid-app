@@ -67,6 +67,93 @@ type Profile = {
   avatar_url: string | null;
 };
 
+type TimeEntryRow = {
+  id: string;
+  user_id: string;
+  entry_date: string;
+  start_time: string;
+  end_time: string;
+  project_id: string;
+  subcategory: string | null;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TimeEntryInsert = {
+  id?: string;
+  user_id: string;
+  entry_date: string;
+  start_time: string;
+  end_time: string;
+  project_id: string;
+  subcategory: string | null;
+  location: string | null;
+};
+
+const KNOWN_PROJECT_IDS = [
+  "lykkecup",
+  "drift",
+  "klassebold",
+  "haandboldtjek",
+  "andet",
+] as const;
+const KNOWN_LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
+
+function parseDbTimeToHour(dbTime: string): number {
+  const [hhRaw, mmRaw] = dbTime.split(":");
+  const hh = Number(hhRaw);
+  const mm = Number(mmRaw ?? "0");
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 8;
+  return hh + mm / 60;
+}
+
+function toDbTime(hour: number): string {
+  const totalMinutes = Math.round(hour * 60);
+  const hh = Math.floor(totalMinutes / 60);
+  const mm = totalMinutes % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+}
+
+function isKnownProjectId(value: string): value is DayEntry["project"] {
+  return (KNOWN_PROJECT_IDS as readonly string[]).includes(value);
+}
+
+function toKnownLocation(value: string | null): DayEntry["location"] {
+  if (value && (KNOWN_LOCATIONS as readonly string[]).includes(value)) {
+    return value as DayEntry["location"];
+  }
+  return "Kontor";
+}
+
+function mapRowToDayEntry(row: TimeEntryRow): DayEntry {
+  return {
+    id: row.id,
+    startHour: parseDbTimeToHour(row.start_time),
+    endHour: parseDbTimeToHour(row.end_time),
+    project: isKnownProjectId(row.project_id) ? row.project_id : "andet",
+    subcategory: row.subcategory,
+    location: toKnownLocation(row.location),
+  };
+}
+
+function mapDayEntryToInsertPayload(
+  entry: DayEntry,
+  userId: string,
+  dayKey: string
+): TimeEntryInsert {
+  return {
+    id: entry.id,
+    user_id: userId,
+    entry_date: dayKey,
+    start_time: toDbTime(entry.startHour),
+    end_time: toDbTime(entry.endHour),
+    project_id: entry.project,
+    subcategory: entry.subcategory ?? null,
+    location: entry.location ?? null,
+  };
+}
+
 function CalendarIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -94,15 +181,19 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [selectedDayKey, setSelectedDayKey] = useState<string>("");
-
-  const [entriesByDay, setEntriesByDay] = useState<Record<string, DayEntry[]>>(
-    {}
+  const [selectedDayKey, setSelectedDayKey] = useState<string>(() =>
+    toDayKey(new Date())
   );
+  const [dayEntries, setDayEntries] = useState<DayEntry[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(false);
+  const [entriesError, setEntriesError] = useState<string>("");
 
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const datePickerRef = useRef<HTMLInputElement | null>(null);
+  const fetchRequestIdRef = useRef(0);
+  const selectedDayKeyRef = useRef(selectedDayKey);
+  const userId = session?.user?.id ?? null;
 
   useEffect(() => {
     let isActive = true;
@@ -169,22 +260,101 @@ export default function Home() {
     };
   }, [session]);
 
+  async function fetchDayEntries(dayKey: string, forUserId: string) {
+    const requestId = ++fetchRequestIdRef.current;
+    setEntriesLoading(true);
+    setEntriesError("");
+
+    const { data, error } = await supabase
+      .from("time_entries")
+      .select(
+        "id, user_id, entry_date, start_time, end_time, project_id, subcategory, location, created_at, updated_at"
+      )
+      .eq("user_id", forUserId)
+      .eq("entry_date", dayKey)
+      .order("start_time", { ascending: true });
+
+    if (requestId !== fetchRequestIdRef.current) return;
+
+    if (error) {
+      setEntriesError("Kunne ikke hente tidsregistreringer");
+      setDayEntries([]);
+      setEntriesLoading(false);
+      return;
+    }
+
+    const rows = (data ?? []) as TimeEntryRow[];
+    setDayEntries(rows.map(mapRowToDayEntry));
+    setEntriesLoading(false);
+  }
+
+  async function saveEntry(entryInput: DayEntry, dayKey: string) {
+    if (!userId) {
+      return { error: new Error("Ingen bruger") };
+    }
+
+    const payload = mapDayEntryToInsertPayload(entryInput, userId, dayKey);
+    const { error } = await supabase
+      .from("time_entries")
+      .upsert(payload, { onConflict: "id" });
+
+    return { error };
+  }
+
+  async function syncDayEntries(nextEntries: DayEntry[]) {
+    if (!selectedDayKey || !userId) return;
+
+    setEntriesError("");
+    const prevById = new Map(dayEntries.map((e) => [e.id, e]));
+    const nextById = new Map(nextEntries.map((e) => [e.id, e]));
+
+    const deletedIds = dayEntries
+      .filter((entry) => !nextById.has(entry.id))
+      .map((entry) => entry.id);
+
+    if (deletedIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("time_entries")
+        .delete()
+        .eq("user_id", userId)
+        .in("id", deletedIds);
+
+      if (deleteError) {
+        setEntriesError("Kunne ikke gemme ændringer lige nu");
+        return;
+      }
+    }
+
+    const changedOrNew = nextEntries.filter((entry) => {
+      const prev = prevById.get(entry.id);
+      if (!prev) return true;
+      return (
+        prev.startHour !== entry.startHour ||
+        prev.endHour !== entry.endHour ||
+        prev.project !== entry.project ||
+        prev.subcategory !== entry.subcategory ||
+        prev.location !== entry.location
+      );
+    });
+
+    for (const entry of changedOrNew) {
+      const { error } = await saveEntry(entry, selectedDayKey);
+      if (error) {
+        setEntriesError("Kunne ikke gemme ændringer lige nu");
+        return;
+      }
+    }
+
+    await fetchDayEntries(selectedDayKey, userId);
+  }
+
   useEffect(() => {
-    const now = new Date();
-    const key = toDayKey(now);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only initialization
-    setSelectedDayKey(key);
-  }, []);
-
-  const selectedEntries = useMemo(
-    () => (selectedDayKey ? entriesByDay[selectedDayKey] ?? [] : []),
-    [entriesByDay, selectedDayKey]
-  );
-
-  const setSelectedEntries = (next: DayEntry[]) => {
-    if (!selectedDayKey) return;
-    setEntriesByDay((prev) => ({ ...prev, [selectedDayKey]: next }));
-  };
+    if (!userId || !selectedDayKey) return;
+    const timer = setTimeout(() => {
+      void fetchDayEntries(selectedDayKey, userId);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [selectedDayKey, userId]);
 
   const selectedDate = selectedDayKey ? fromDayKey(selectedDayKey) : null;
 
@@ -215,8 +385,10 @@ export default function Home() {
 
   const goToDayKey = (nextKey: string) => {
     if (!nextKey) return;
+    selectedDayKeyRef.current = nextKey;
     if (!selectedDayKey) {
       setSelectedDayKey(nextKey);
+      if (userId) void fetchDayEntries(nextKey, userId);
       return;
     }
     const from = fromDayKey(selectedDayKey);
@@ -226,6 +398,7 @@ export default function Home() {
     else if (to.getTime() < from.getTime()) dir = "prev";
     setTransitionDirection(dir);
     setSelectedDayKey(nextKey);
+    if (userId) void fetchDayEntries(nextKey, userId);
   };
 
   const goDay = (deltaDays: number) => {
@@ -422,6 +595,16 @@ export default function Home() {
 
       {/* Fills remaining viewport; 08:00–16:00 scales to this area (no overlap under header) */}
       <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {entriesError ? (
+          <div className="mx-3 mt-1 rounded-lg border border-rose-200/70 bg-rose-50/80 px-3 py-1.5 text-[11px] font-medium text-rose-700">
+            {entriesError}
+          </div>
+        ) : null}
+        {entriesLoading ? (
+          <div className="mx-3 mt-1 rounded-lg border border-line-soft/60 bg-white/70 px-3 py-1.5 text-[11px] font-medium text-evergreen/70">
+            Henter tidsregistreringer...
+          </div>
+        ) : null}
         <div
           key={selectedDayKey ?? "no-day"}
           className={[
@@ -435,8 +618,8 @@ export default function Home() {
           onAnimationEnd={() => setTransitionDirection(null)}
         >
           <DayTimeline
-            entries={selectedEntries}
-            onEntriesChange={setSelectedEntries}
+            entries={dayEntries}
+            onEntriesChange={syncDayEntries}
           />
         </div>
 
