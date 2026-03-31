@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const DAY_START = 8;
 /** Visible work-day window (08:00–16:00); no evening strip / no timeline scroll */
@@ -640,18 +641,21 @@ export function DayTimeline({
         </div>
       </div>
       {/* Bottom sheet */}
-      {sheetOpen && draft && (
-        <div className="fixed inset-0 z-[900] flex items-end">
-          {/* Backdrop */}
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/25 backdrop-blur-sm"
-            aria-label="Luk"
-            onClick={cancelDraft}
-          />
+      {sheetOpen &&
+        draft &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-end">
+            {/* Backdrop */}
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/25 backdrop-blur-sm"
+              aria-label="Luk"
+              onClick={cancelDraft}
+            />
 
-          <div className="relative w-full rounded-t-[1.5rem] bg-white/85 px-4 pb-6 pt-4 shadow-[0_-28px_80px_-40px_rgba(15,42,29,0.50)] ring-1 ring-forest-deep/[0.04] backdrop-blur-md sm:px-6">
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
+            <div className="relative w-full rounded-t-[1.5rem] bg-white/85 px-4 pb-6 pt-4 shadow-[0_-28px_80px_-40px_rgba(15,42,29,0.50)] ring-1 ring-forest-deep/[0.04] backdrop-blur-md sm:px-6">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
 
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -872,9 +876,10 @@ export function DayTimeline({
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
