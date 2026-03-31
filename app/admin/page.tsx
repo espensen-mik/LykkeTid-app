@@ -34,6 +34,7 @@ type SubcategoryRow = {
 
 type TimeEntryRow = {
   id: string;
+  user_id: string;
   entry_date: string;
   start_time: string;
   end_time: string;
@@ -71,6 +72,15 @@ function formatHours(value: number): string {
   return value.toFixed(1);
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export default function AdminPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -79,6 +89,7 @@ export default function AdminPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [subcategories, setSubcategories] = useState<SubcategoryRow[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntryRow[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [adminDataLoading, setAdminDataLoading] = useState(false);
   const [adminDataError, setAdminDataError] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -175,10 +186,21 @@ export default function AdminPage() {
   async function fetchTimeEntries() {
     const { data, error } = await supabase
       .from("time_entries")
-      .select("id, entry_date, start_time, end_time, project_id");
+      .select("id, user_id, entry_date, start_time, end_time, project_id");
 
     if (error) return { error };
     setTimeEntries((data ?? []) as TimeEntryRow[]);
+    return { error: null };
+  }
+
+  async function fetchProfilesForUsage() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, title, avatar_url, role")
+      .order("full_name", { ascending: true });
+
+    if (error) return { error };
+    setProfiles((data ?? []) as Profile[]);
     return { error: null };
   }
 
@@ -197,15 +219,22 @@ export default function AdminPage() {
       setAdminDataLoading(true);
       setAdminDataError("");
 
-      const [projectsResult, subcategoriesResult, timeEntriesResult] = await Promise.all([
+      const [projectsResult, subcategoriesResult, timeEntriesResult, profilesResult] =
+        await Promise.all([
         fetchProjects(),
         fetchSubcategories(),
         fetchTimeEntries(),
+        fetchProfilesForUsage(),
       ]);
 
       if (!isActive) return;
 
-      if (projectsResult.error || subcategoriesResult.error || timeEntriesResult.error) {
+      if (
+        projectsResult.error ||
+        subcategoriesResult.error ||
+        timeEntriesResult.error ||
+        profilesResult.error
+      ) {
         setAdminDataError("Kunne ikke hente admin-data");
       } else {
         setAdminDataError("");
@@ -268,7 +297,9 @@ export default function AdminPage() {
       { projectName: string; totalHours: number; currentMonthHours: number; sortOrder: number | null }
     >();
 
-    for (const project of projects) {
+    const activeProjects = projects.filter((p) => p.is_active);
+
+    for (const project of activeProjects) {
       usageMap.set(project.slug, {
         projectName: project.name,
         totalHours: 0,
@@ -291,7 +322,7 @@ export default function AdminPage() {
       }
     }
 
-    return projects
+    return activeProjects
       .slice()
       .sort((a, b) => {
         const aSort = a.sort_order ?? Number.MAX_SAFE_INTEGER;
@@ -308,6 +339,75 @@ export default function AdminPage() {
         };
       });
   }, [projects, timeEntries]);
+
+  const projectNameBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects) {
+      map.set(project.slug, project.name);
+    }
+    return map;
+  }, [projects]);
+
+  const userUsage = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const entriesByUser = new Map<string, TimeEntryRow[]>();
+    for (const entry of timeEntries) {
+      const list = entriesByUser.get(entry.user_id) ?? [];
+      list.push(entry);
+      entriesByUser.set(entry.user_id, list);
+    }
+
+    return profiles.map((p) => {
+      const userEntries = entriesByUser.get(p.id) ?? [];
+      let totalHours = 0;
+      let currentMonthHours = 0;
+      const projectUsage = new Map<
+        string,
+        { projectSlug: string; totalHours: number; currentMonthHours: number }
+      >();
+
+      for (const entry of userEntries) {
+        const hours = getEntryDurationHours(entry.start_time, entry.end_time);
+        totalHours += hours;
+
+        const projectRow = projectUsage.get(entry.project_id) ?? {
+          projectSlug: entry.project_id,
+          totalHours: 0,
+          currentMonthHours: 0,
+        };
+        projectRow.totalHours += hours;
+
+        const [yearRaw, monthRaw] = entry.entry_date.split("-");
+        const y = Number(yearRaw);
+        const m = Number(monthRaw);
+        if (y === currentYear && m === currentMonth) {
+          currentMonthHours += hours;
+          projectRow.currentMonthHours += hours;
+        }
+        projectUsage.set(entry.project_id, projectRow);
+      }
+
+      const projectsList = Array.from(projectUsage.values())
+        .sort((a, b) => a.projectSlug.localeCompare(b.projectSlug, "da"))
+        .map((row) => ({
+          projectName: projectNameBySlug.get(row.projectSlug) ?? row.projectSlug,
+          totalHours: row.totalHours,
+          currentMonthHours: row.currentMonthHours,
+        }));
+
+      return {
+        id: p.id,
+        fullName: p.full_name?.trim() || p.title || "Bruger",
+        avatarUrl: p.avatar_url?.trim() || null,
+        totalHours,
+        currentMonthHours,
+        projectsList,
+      };
+    });
+  }, [profiles, projectNameBySlug, timeEntries]);
 
   if (authLoading || profileLoading) {
     return (
@@ -404,41 +504,108 @@ export default function AdminPage() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-evergreen/20 border-t-accent" />
         </div>
       ) : activeTab === "time-usage" ? (
-        <section className="mt-6 rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-          <h2 className="text-[16px] font-semibold text-forest">Tidsforbrug pr. projekt</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[28rem] border-separate border-spacing-0 text-left">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-evergreen/60">
-                  <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
-                    Projekt
-                  </th>
-                  <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
-                    Timer i alt
-                  </th>
-                  <th className="border-b border-line-soft/35 pb-2 font-semibold">
-                    Timer denne måned
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeUsageByProject.map((row) => (
-                  <tr key={row.projectName} className="text-[13px] text-forest/90">
-                    <td className="border-b border-line-soft/20 py-2 pr-3">
-                      {row.projectName}
-                    </td>
-                    <td className="border-b border-line-soft/20 py-2 pr-3">
-                      {formatHours(row.totalHours)}
-                    </td>
-                    <td className="border-b border-line-soft/20 py-2">
-                      {formatHours(row.currentMonthHours)}
-                    </td>
+        <div className="mt-6 space-y-4">
+          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+            <h2 className="text-[16px] font-semibold text-forest">Brugere</h2>
+            <div className="mt-3 space-y-3">
+              {userUsage.map((user) => (
+                <article
+                  key={user.id}
+                  className="rounded-xl border border-line-soft/45 bg-white/70 p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-[12px] font-semibold text-white">
+                        {user.avatarUrl ? (
+                          <div
+                            className="h-full w-full bg-cover bg-center"
+                            style={{ backgroundImage: `url("${user.avatarUrl}")` }}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <span>{getInitials(user.fullName) || "?"}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[14px] font-semibold text-forest">
+                          {user.fullName}
+                        </div>
+                        <div className="text-[12px] text-evergreen/65">
+                          Timer i alt: {formatHours(user.totalHours)} · Denne måned:{" "}
+                          {formatHours(user.currentMonthHours)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 border-t border-line-soft/30 pt-2">
+                    <div className="text-[11px] uppercase tracking-wide text-evergreen/55">
+                      Projektfordeling
+                    </div>
+                    {user.projectsList.length === 0 ? (
+                      <div className="mt-1 text-[12px] text-evergreen/60">
+                        Ingen registreringer endnu
+                      </div>
+                    ) : (
+                      <ul className="mt-2 space-y-1">
+                        {user.projectsList.map((projectRow) => (
+                          <li
+                            key={`${user.id}-${projectRow.projectName}`}
+                            className="flex items-center justify-between rounded-lg border border-line-soft/30 bg-white/60 px-2.5 py-1.5 text-[12px]"
+                          >
+                            <span className="font-medium text-forest/90">
+                              {projectRow.projectName}
+                            </span>
+                            <span className="text-evergreen/65">
+                              I alt: {formatHours(projectRow.totalHours)} · Denne måned:{" "}
+                              {formatHours(projectRow.currentMonthHours)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+            <h2 className="text-[16px] font-semibold text-forest">Projekter</h2>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[28rem] border-separate border-spacing-0 text-left">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wide text-evergreen/60">
+                    <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
+                      Projekt
+                    </th>
+                    <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
+                      Timer i alt
+                    </th>
+                    <th className="border-b border-line-soft/35 pb-2 font-semibold">
+                      Timer denne måned
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {timeUsageByProject.map((row) => (
+                    <tr key={row.projectName} className="text-[13px] text-forest/90">
+                      <td className="border-b border-line-soft/20 py-2 pr-3">
+                        {row.projectName}
+                      </td>
+                      <td className="border-b border-line-soft/20 py-2 pr-3">
+                        {formatHours(row.totalHours)}
+                      </td>
+                      <td className="border-b border-line-soft/20 py-2">
+                        {formatHours(row.currentMonthHours)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       ) : (
         <div className="mt-6">
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
