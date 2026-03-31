@@ -38,3 +38,33 @@ body {
   background-color: color-mix(in srgb, var(--pastel) 75%, transparent);
   color: var(--forest-deep);
 }
+
+@keyframes day-slide-next-keyframe {
+  from {
+    transform: translateX(7%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes day-slide-prev-keyframe {
+  from {
+    transform: translateX(-7%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.day-slide-next {
+  animation: day-slide-next-keyframe 0.2s ease-out;
+}
+
+.day-slide-prev {
+  animation: day-slide-prev-keyframe 0.2s ease-out;
+}

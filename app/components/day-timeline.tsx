@@ -508,21 +508,12 @@ export function DayTimeline({
 
             {/* Empty state */}
             {!hasEntries && (
-              <>
-                <div
-                  className="pointer-events-none absolute left-3 right-3 top-1/2 -translate-y-1/2 text-center text-[12px] font-medium text-evergreen/35"
-                  aria-hidden
-                >
-                  Ingen tidsblokke endnu
-                </div>
-
-                <div
-                  className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-evergreen/15 bg-white/60 px-3 py-1 text-[12px] font-semibold text-evergreen/60 shadow-[0_8px_30px_rgba(15,42,29,0.08)]"
-                  aria-hidden
-                >
-                  Tryk for én time, eller træk for flere timer
-                </div>
-              </>
+              <div
+                className="pointer-events-none absolute inset-x-3 top-1/2 -translate-y-1/2 text-center text-[12px] font-medium text-evergreen/35"
+                aria-hidden
+              >
+                Ingen tidsblokke endnu
+              </div>
             )}
 
             {/* Drag selection highlight */}

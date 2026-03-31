@@ -89,7 +89,6 @@ export default function Home() {
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   const [dayDraftKey, setDayDraftKey] = useState<string>("");
   const [profileOpen, setProfileOpen] = useState(false);
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const now = new Date();
@@ -128,6 +127,10 @@ export default function Home() {
     return { weekday, dateLine };
   }, [selectedDate]);
 
+  const [transitionDirection, setTransitionDirection] = useState<
+    "next" | "prev" | null
+  >(null);
+
   const goDay = (deltaDays: number) => {
     if (!selectedDayKey) return;
     const d = fromDayKey(selectedDayKey);
@@ -155,37 +158,7 @@ export default function Home() {
   return (
     <main className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden sm:max-w-xl">
       <header className="z-[100] w-full shrink-0 bg-white/55 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-        <div
-          className="px-3 pb-1.5 pt-2"
-          onTouchStart={(e) => {
-            if (dayPickerOpen) return;
-            const t = e.touches[0];
-            swipeStartRef.current = { x: t.clientX, y: t.clientY };
-          }}
-          onTouchEnd={(e) => {
-            if (dayPickerOpen) return;
-            const start = swipeStartRef.current;
-            if (!start) return;
-            swipeStartRef.current = null;
-
-            const t = e.changedTouches[0];
-            const dx = t.clientX - start.x;
-            const dy = t.clientY - start.y;
-
-            // Slightly lower horizontal threshold and tighter vertical guard
-            if (Math.abs(dx) < 40) return;
-            if (Math.abs(dy) > 60) return;
-
-            // Swipe left => next day
-            if (dx < 0) {
-              e.preventDefault();
-              goDay(1);
-            } else {
-              e.preventDefault();
-              goDay(-1);
-            }
-          }}
-        >
+        <div className="px-3 pb-1.5 pt-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-[11px] font-medium tracking-wide text-evergreen/75">
               LykkeTid
@@ -219,8 +192,34 @@ export default function Home() {
           </div>
 
           <div className="mt-1.5 space-y-0.5">
-            <div className="text-[10px] font-normal text-evergreen/55">
-              {selectedDate ? formatMonthYear(selectedDate) : ""}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[10px] font-normal text-evergreen/55">
+                {selectedDate ? formatMonthYear(selectedDate) : ""}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Forrige dag"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line-soft/70 bg-white/80 text-evergreen/70 shadow-sm hover:bg-pastel/25 active:scale-[0.97] transition"
+                  onClick={() => {
+                    setTransitionDirection("prev");
+                    goDay(-1);
+                  }}
+                >
+                  <span className="text-[16px] leading-none">‹</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Næste dag"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line-soft/70 bg-white/80 text-evergreen/70 shadow-sm hover:bg-pastel/25 active:scale-[0.97] transition"
+                  onClick={() => {
+                    setTransitionDirection("next");
+                    goDay(1);
+                  }}
+                >
+                  <span className="text-[16px] leading-none">›</span>
+                </button>
+              </div>
             </div>
             <div className="text-[13px] font-normal leading-snug text-evergreen/80">
               <span className="capitalize">{headerDateText.weekday}</span>
@@ -295,10 +294,23 @@ export default function Home() {
 
       {/* Fills remaining viewport; 08:00–16:00 scales to this area (no overlap under header) */}
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <DayTimeline
-          entries={selectedEntries}
-          onEntriesChange={setSelectedEntries}
-        />
+        <div
+          key={selectedDayKey ?? "no-day"}
+          className={[
+            "flex h-full min-h-0 w-full flex-1 flex-col transition-transform duration-200 ease-out will-change-transform",
+            transitionDirection === "next"
+              ? "day-slide-next"
+              : transitionDirection === "prev"
+              ? "day-slide-prev"
+              : "",
+          ].join(" ")}
+          onAnimationEnd={() => setTransitionDirection(null)}
+        >
+          <DayTimeline
+            entries={selectedEntries}
+            onEntriesChange={setSelectedEntries}
+          />
+        </div>
       </section>
 
       {/* Day picker bottom sheet */}
