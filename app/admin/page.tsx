@@ -14,6 +14,7 @@ type Profile = {
   title: string | null;
   avatar_url: string | null;
   role: string | null;
+  created_at: string | null;
 };
 
 type ProjectRow = {
@@ -41,7 +42,7 @@ type TimeEntryRow = {
   project_id: string;
 };
 
-type AdminTab = "time-usage" | "project-management";
+type AdminTab = "time-usage" | "project-management" | "users";
 
 function slugify(input: string): string {
   return input
@@ -70,6 +71,27 @@ function getEntryDurationHours(startTime: string, endTime: string): number {
 function formatHours(value: number): string {
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(1);
+}
+
+function formatCreatedAt(value: string | null): string {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return new Intl.DateTimeFormat("da-DK", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
+function getProjectColor(projectSlug: string): string {
+  const slug = projectSlug.toLowerCase();
+  if (slug === "drift") return "#4ca771";
+  if (slug === "lykkecup") return "#f59e0b";
+  if (slug === "klassebold") return "#7c3aed";
+  if (slug === "haandboldtjek") return "#e11d48";
+  if (slug === "andet") return "#64748b";
+  return "#6b9071";
 }
 
 function buildPieSegments(
@@ -154,7 +176,7 @@ export default function AdminPage() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, title, avatar_url, role")
+        .select("id, full_name, title, avatar_url, role, created_at")
         .eq("id", session.user.id)
         .single();
 
@@ -212,7 +234,7 @@ export default function AdminPage() {
   async function fetchProfilesForUsage() {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, title, avatar_url, role")
+      .select("id, full_name, title, avatar_url, role, created_at")
       .order("full_name", { ascending: true });
 
     if (error) return { error };
@@ -350,6 +372,7 @@ export default function AdminPage() {
         const usage = usageMap.get(project.slug);
         return {
           projectName: project.name,
+          projectSlug: project.slug,
           totalHours: usage?.totalHours ?? 0,
           currentMonthHours: usage?.currentMonthHours ?? 0,
         };
@@ -376,7 +399,17 @@ export default function AdminPage() {
       entriesByUser.set(entry.user_id, list);
     }
 
-    return profiles.map((p) => {
+    return profiles
+      .slice()
+      .sort((a, b) => {
+        const roleA = a.role === "admin" ? 0 : 1;
+        const roleB = b.role === "admin" ? 0 : 1;
+        if (roleA !== roleB) return roleA - roleB;
+        const nameA = (a.full_name ?? "").trim();
+        const nameB = (b.full_name ?? "").trim();
+        return nameA.localeCompare(nameB, "da");
+      })
+      .map((p) => {
       const userEntries = entriesByUser.get(p.id) ?? [];
       let totalHours = 0;
       let currentMonthHours = 0;
@@ -417,6 +450,9 @@ export default function AdminPage() {
       return {
         id: p.id,
         fullName: p.full_name?.trim() || p.title || "Bruger",
+        title: p.title?.trim() || "-",
+        role: p.role || "user",
+        createdAt: p.created_at,
         avatarUrl: p.avatar_url?.trim() || null,
         totalHours,
         currentMonthHours,
@@ -504,6 +540,18 @@ export default function AdminPage() {
         >
           Administrer projekter
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("users")}
+          className={[
+            "rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
+            activeTab === "users"
+              ? "border-accent/50 bg-accent/10 text-forest"
+              : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
+          ].join(" ")}
+        >
+          Brugere
+        </button>
       </div>
 
       {adminDataError ? (
@@ -521,16 +569,6 @@ export default function AdminPage() {
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
             <h2 className="text-[16px] font-semibold text-forest">Fordeling af tid pr. projekt</h2>
             {(() => {
-              const palette = [
-                "#4ca771",
-                "#6b9071",
-                "#375534",
-                "#c0e6ba",
-                "#5f7f66",
-                "#84b18f",
-                "#f4b860",
-                "#7a9f83",
-              ];
               const allRows = timeUsageByProject.filter((row) => row.totalHours > 0);
               const monthRows = timeUsageByProject.filter(
                 (row) => row.currentMonthHours > 0
@@ -554,7 +592,7 @@ export default function AdminPage() {
                   ? "conic-gradient(#d9e5d3 0deg 360deg)"
                   : `conic-gradient(${allSegments
                       .map((segment, i) => {
-                        const color = palette[i % palette.length];
+                        const color = getProjectColor(allRows[i]?.projectSlug ?? "");
                         return `${color} ${segment.start}deg ${segment.end}deg`;
                       })
                       .join(", ")})`;
@@ -563,7 +601,7 @@ export default function AdminPage() {
                   ? "conic-gradient(#d9e5d3 0deg 360deg)"
                   : `conic-gradient(${monthSegments
                       .map((segment, i) => {
-                        const color = palette[i % palette.length];
+                        const color = getProjectColor(monthRows[i]?.projectSlug ?? "");
                         return `${color} ${segment.start}deg ${segment.end}deg`;
                       })
                       .join(", ")})`;
@@ -603,8 +641,8 @@ export default function AdminPage() {
                         Ingen tidsdata endnu.
                       </div>
                     ) : (
-                      allRows.map((row, i) => {
-                        const color = palette[i % palette.length];
+                      allRows.map((row) => {
+                        const color = getProjectColor(row.projectSlug);
                         const pctAll = allTotal > 0 ? (row.totalHours / allTotal) * 100 : 0;
                         const pctMonth =
                           monthTotal > 0 ? (row.currentMonthHours / monthTotal) * 100 : 0;
@@ -635,71 +673,6 @@ export default function AdminPage() {
                 </div>
               );
             })()}
-          </section>
-
-          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-            <h2 className="text-[16px] font-semibold text-forest">Brugere</h2>
-            <div className="mt-3 space-y-3">
-              {userUsage.map((user) => (
-                <article
-                  key={user.id}
-                  className="rounded-xl border border-line-soft/45 bg-white/70 p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-[12px] font-semibold text-white">
-                        {user.avatarUrl ? (
-                          <div
-                            className="h-full w-full bg-cover bg-center"
-                            style={{ backgroundImage: `url("${user.avatarUrl}")` }}
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <span>{getInitials(user.fullName) || "?"}</span>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[14px] font-semibold text-forest">
-                          {user.fullName}
-                        </div>
-                        <div className="text-[12px] text-evergreen/65">
-                          Timer i alt: {formatHours(user.totalHours)} · Denne måned:{" "}
-                          {formatHours(user.currentMonthHours)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 border-t border-line-soft/30 pt-2">
-                    <div className="text-[11px] uppercase tracking-wide text-evergreen/55">
-                      Projektfordeling
-                    </div>
-                    {user.projectsList.length === 0 ? (
-                      <div className="mt-1 text-[12px] text-evergreen/60">
-                        Ingen registreringer endnu
-                      </div>
-                    ) : (
-                      <ul className="mt-2 space-y-1">
-                        {user.projectsList.map((projectRow) => (
-                          <li
-                            key={`${user.id}-${projectRow.projectName}`}
-                            className="flex items-center justify-between rounded-lg border border-line-soft/30 bg-white/60 px-2.5 py-1.5 text-[12px]"
-                          >
-                            <span className="font-medium text-forest/90">
-                              {projectRow.projectName}
-                            </span>
-                            <span className="text-evergreen/65">
-                              I alt: {formatHours(projectRow.totalHours)} · Denne måned:{" "}
-                              {formatHours(projectRow.currentMonthHours)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
           </section>
 
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
@@ -738,6 +711,49 @@ export default function AdminPage() {
             </div>
           </section>
         </div>
+      ) : activeTab === "users" ? (
+        <section className="mt-6 rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+          <h2 className="text-[16px] font-semibold text-forest">Brugere</h2>
+          <div className="mt-3 space-y-3">
+            {userUsage.map((user) => (
+              <article
+                key={user.id}
+                className="rounded-xl border border-line-soft/45 bg-white/70 p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-[12px] font-semibold text-white">
+                      {user.avatarUrl ? (
+                        <div
+                          className="h-full w-full bg-cover bg-center"
+                          style={{ backgroundImage: `url("${user.avatarUrl}")` }}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <span>{getInitials(user.fullName) || "?"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-[14px] font-semibold text-forest">
+                        {user.fullName}
+                      </div>
+                      <div className="text-[12px] text-evergreen/65">
+                        {user.title} · {user.role}
+                      </div>
+                      <div className="text-[11px] text-evergreen/55">
+                        Oprettet: {formatCreatedAt(user.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-line-soft/35 bg-white/65 px-3 py-2 text-[12px] text-evergreen/70">
+                    <div>Timer i alt: {formatHours(user.totalHours)}</div>
+                    <div>Denne måned: {formatHours(user.currentMonthHours)}</div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : (
         <div className="mt-6">
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
