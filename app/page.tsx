@@ -243,7 +243,8 @@ export default function Home() {
     setProfileOpen(false);
   };
 
-  const displayName = profile?.full_name?.trim() || session.user.email || "Bruger";
+  const displayName =
+    profile?.full_name?.trim() || session?.user?.email || "Bruger";
   const displayTitle = profile?.title?.trim() || "Medlem";
   const avatarUrl = profile?.avatar_url?.trim() || null;
   const initials = displayName
@@ -478,7 +479,7 @@ export default function Home() {
                   {displayTitle}
                 </div>
                 <div className="mt-1 text-[11px] text-evergreen/50">
-                  {session.user.email}
+                  {session?.user?.email}
                 </div>
               </div>
               <button
