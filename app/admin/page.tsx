@@ -72,6 +72,22 @@ function formatHours(value: number): string {
   return value.toFixed(1);
 }
 
+function buildPieSegments(
+  rows: { projectName: string; totalHours: number }[]
+): Array<{ projectName: string; totalHours: number; start: number; end: number }> {
+  const total = rows.reduce((sum, row) => sum + row.totalHours, 0);
+  if (total <= 0) return [];
+  let cursor = 0;
+  return rows
+    .filter((row) => row.totalHours > 0)
+    .map((row) => {
+      const start = cursor;
+      const fraction = row.totalHours / total;
+      cursor += fraction * 360;
+      return { ...row, start, end: cursor };
+    });
+}
+
 function getInitials(name: string): string {
   return name
     .split(/\s+/)
@@ -452,9 +468,6 @@ export default function AdminPage() {
             <Clock3 className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
             <span>LykkeTid Admin</span>
           </h1>
-          <p className="mt-1 text-[13px] text-evergreen/70">
-            Projekter og underpunkter
-          </p>
         </div>
         <div className="rounded-xl border border-line-soft/60 bg-white/75 px-3 py-2 text-right">
           <div className="text-[13px] font-semibold text-forest">
@@ -505,6 +518,76 @@ export default function AdminPage() {
         </div>
       ) : activeTab === "time-usage" ? (
         <div className="mt-6 space-y-4">
+          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+            <h2 className="text-[16px] font-semibold text-forest">Fordeling af tid pr. projekt</h2>
+            {(() => {
+              const palette = [
+                "#4ca771",
+                "#f59e0b",
+                "#7c3aed",
+                "#e11d48",
+                "#0ea5e9",
+                "#64748b",
+                "#16a34a",
+                "#b45309",
+              ];
+              const chartRows = timeUsageByProject.filter((row) => row.totalHours > 0);
+              const totalHours = chartRows.reduce((sum, row) => sum + row.totalHours, 0);
+              const segments = buildPieSegments(chartRows);
+              const gradient =
+                segments.length === 0
+                  ? "conic-gradient(#d1d5db 0deg 360deg)"
+                  : `conic-gradient(${segments
+                      .map((segment, i) => {
+                        const color = palette[i % palette.length];
+                        return `${color} ${segment.start}deg ${segment.end}deg`;
+                      })
+                      .join(", ")})`;
+
+              return (
+                <div className="mt-3 flex flex-wrap items-center gap-6">
+                  <div
+                    className="h-44 w-44 rounded-full border border-line-soft/50"
+                    style={{ background: gradient }}
+                    aria-label="Fordeling af timer på projekter"
+                  />
+                  <div className="min-w-[16rem] flex-1 space-y-1.5">
+                    {chartRows.length === 0 ? (
+                      <div className="text-[13px] text-evergreen/65">
+                        Ingen tidsdata endnu.
+                      </div>
+                    ) : (
+                      chartRows.map((row, i) => {
+                        const color = palette[i % palette.length];
+                        const pct = totalHours > 0 ? (row.totalHours / totalHours) * 100 : 0;
+                        return (
+                          <div
+                            key={row.projectName}
+                            className="flex items-center justify-between rounded-lg border border-line-soft/25 bg-white/60 px-2.5 py-1.5 text-[12px]"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ backgroundColor: color }}
+                                aria-hidden="true"
+                              />
+                              <span className="font-medium text-forest/90">
+                                {row.projectName}
+                              </span>
+                            </div>
+                            <span className="text-evergreen/70">
+                              {formatHours(row.totalHours)} t ({pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
             <h2 className="text-[16px] font-semibold text-forest">Brugere</h2>
             <div className="mt-3 space-y-3">
