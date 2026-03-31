@@ -641,7 +641,7 @@ export function DayTimeline({
       </div>
       {/* Bottom sheet */}
       {sheetOpen && draft && (
-        <div className="fixed inset-0 z-[300] flex items-end">
+        <div className="fixed inset-0 z-[900] flex items-end">
           {/* Backdrop */}
           <button
             type="button"
@@ -650,7 +650,7 @@ export function DayTimeline({
             onClick={cancelDraft}
           />
 
-          <div className="relative w-full rounded-t-[1.5rem] bg-white/95 px-4 pb-6 pt-4 shadow-[0_-20px_60px_-40px_rgba(15,42,29,0.35)] ring-1 ring-forest-deep/[0.05] sm:px-6">
+          <div className="relative w-full rounded-t-[1.5rem] bg-white/85 px-4 pb-6 pt-4 shadow-[0_-28px_80px_-40px_rgba(15,42,29,0.50)] ring-1 ring-forest-deep/[0.04] backdrop-blur-md sm:px-6">
             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
 
             <div className="flex items-start justify-between gap-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import { DayTimeline, type DayEntry } from "@/app/components/day-timeline";
+import { Clock3 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -163,8 +164,15 @@ export default function Home() {
       <header className="z-[100] w-full shrink-0 bg-white/55 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="px-3 pb-1.5 pt-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] font-medium tracking-wide text-evergreen/75">
-              LykkeTid
+            <div className="flex items-center gap-1.5 text-evergreen">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/70 ring-1 ring-line-soft/45 shadow-[0_2px_8px_rgba(15,42,29,0.08)]">
+                <Clock3
+                  className="h-[14px] w-[14px] text-accent"
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                />
+              </span>
+              <span className="text-[17px] font-bold tracking-tight">LykkeTid</span>
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
@@ -314,11 +322,11 @@ export default function Home() {
           />
         </div>
 
-        {/* Floating side day navigation arrows */}
+        {/* Floating side day navigation arrows (below modal z-index) */}
         <button
           type="button"
           aria-label="Forrige dag"
-          className="pointer-events-auto absolute left-3 top-1/2 z-[120] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          className="pointer-events-auto absolute left-3 top-[43.75%] z-40 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
           onClick={() => goDay(-1)}
         >
           <span className="text-[18px] leading-none">‹</span>
@@ -326,7 +334,7 @@ export default function Home() {
         <button
           type="button"
           aria-label="Næste dag"
-          className="pointer-events-auto absolute right-3 top-1/2 z-[120] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          className="pointer-events-auto absolute right-3 top-[43.75%] z-40 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
           onClick={() => goDay(1)}
         >
           <span className="text-[18px] leading-none">›</span>
