@@ -1,6 +1,9 @@
 "use client";
 
 import { DayTimeline, type DayEntry } from "@/app/components/day-timeline";
+import { LoginScreen } from "@/app/components/login-screen";
+import { supabase } from "@/lib/supabaseClient";
+import type { Session } from "@supabase/supabase-js";
 import { Clock3 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -81,6 +84,8 @@ function CalendarIcon({ className }: { className?: string }) {
 }
 
 export default function Home() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
 
   const [entriesByDay, setEntriesByDay] = useState<Record<string, DayEntry[]>>(
@@ -90,6 +95,32 @@ export default function Home() {
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const datePickerRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const initSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!isActive) return;
+      setSession(data.session ?? null);
+      setAuthLoading(false);
+    };
+
+    initSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     const now = new Date();
     const key = toDayKey(now);
@@ -158,6 +189,25 @@ export default function Home() {
   };
 
   const goWeek = (deltaWeeks: number) => goDay(deltaWeeks * 7);
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setProfileOpen(false);
+  };
+
+  if (authLoading) {
+    return (
+      <main className="mx-auto flex h-full min-h-0 w-full flex-1 items-center justify-center px-4">
+        <div className="rounded-xl border border-line-soft/45 bg-white/70 px-4 py-2 text-[13px] font-medium text-evergreen/70">
+          Indlæser...
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen />;
+  }
 
   return (
     <main className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden sm:max-w-xl">
@@ -353,7 +403,7 @@ export default function Home() {
               <div>
                 <div className="text-sm font-semibold text-forest">Profil</div>
                 <div className="mt-1 text-[12px] font-medium text-evergreen/65">
-                  Brugeroplysninger og indstillinger kommer her.
+                  {session.user.email}
                 </div>
               </div>
               <button
@@ -363,6 +413,15 @@ export default function Home() {
                 aria-label="Luk"
               >
                 <span className="text-[18px] leading-none">×</span>
+              </button>
+            </div>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={signOut}
+                className="w-full rounded-xl border border-line-soft/75 bg-white px-3 py-2 text-[14px] font-semibold text-forest transition-colors hover:bg-pastel/25"
+              >
+                Log ud
               </button>
             </div>
           </div>
