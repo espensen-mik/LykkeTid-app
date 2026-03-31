@@ -5,7 +5,6 @@ import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 import { Clock3 } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function pad2(n: number): string {
@@ -61,6 +60,13 @@ function getWeekDays(d: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+type Profile = {
+  id: string;
+  full_name: string | null;
+  title: string | null;
+  avatar_url: string | null;
+};
+
 function CalendarIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -86,6 +92,8 @@ function CalendarIcon({ className }: { className?: string }) {
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
 
   const [entriesByDay, setEntriesByDay] = useState<Record<string, DayEntry[]>>(
@@ -120,6 +128,46 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchProfile = async () => {
+      if (!session) {
+        setProfile(null);
+        setProfileLoading(false);
+        return;
+      }
+      setProfileLoading(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!isActive) return;
+      if (!user) {
+        setProfile(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, title, avatar_url")
+        .eq("id", user.id)
+        .single();
+
+      if (!isActive) return;
+      setProfile((data as Profile | null) ?? null);
+      setProfileLoading(false);
+    };
+
+    fetchProfile();
+
+    return () => {
+      isActive = false;
+    };
+  }, [session]);
 
   useEffect(() => {
     const now = new Date();
@@ -195,6 +243,16 @@ export default function Home() {
     setProfileOpen(false);
   };
 
+  const displayName = profile?.full_name?.trim() || session.user.email || "Bruger";
+  const displayTitle = profile?.title?.trim() || "Medlem";
+  const avatarUrl = profile?.avatar_url?.trim() || null;
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+
   if (authLoading) {
     return (
       <main className="mx-auto flex h-full min-h-0 w-full flex-1 items-center justify-center px-4">
@@ -259,16 +317,27 @@ export default function Home() {
                 type="button"
                 onClick={() => setProfileOpen(true)}
                 aria-label="Profil"
-                className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full ring-2 ring-white/80 ring-offset-1 ring-offset-mint/90"
+                className="flex items-center gap-2 rounded-xl border border-line-soft/60 bg-white/70 px-1.5 py-1 shadow-sm"
               >
-                <Image
-                  src="/mik_profil.jpg"
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="h-full w-full object-cover"
-                  sizes="36px"
-                />
+                <div className="min-w-0 text-right">
+                  <div className="max-w-[7.5rem] truncate text-[11px] font-semibold text-forest">
+                    {profileLoading ? "Henter..." : displayName}
+                  </div>
+                  <div className="max-w-[7.5rem] truncate text-[10px] text-evergreen/65">
+                    {displayTitle}
+                  </div>
+                </div>
+                <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-[12px] font-semibold text-white ring-2 ring-white/80 ring-offset-1 ring-offset-mint/90">
+                  {avatarUrl ? (
+                    <div
+                      className="h-full w-full bg-cover bg-center"
+                      style={{ backgroundImage: `url("${avatarUrl}")` }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span>{initials || "?"}</span>
+                  )}
+                </div>
               </button>
             </div>
           </div>
@@ -403,6 +472,12 @@ export default function Home() {
               <div>
                 <div className="text-sm font-semibold text-forest">Profil</div>
                 <div className="mt-1 text-[12px] font-medium text-evergreen/65">
+                  {displayName}
+                </div>
+                <div className="mt-0.5 text-[12px] text-evergreen/60">
+                  {displayTitle}
+                </div>
+                <div className="mt-1 text-[11px] text-evergreen/50">
                   {session.user.email}
                 </div>
               </div>
