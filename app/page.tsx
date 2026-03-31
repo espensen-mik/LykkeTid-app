@@ -1,6 +1,10 @@
 "use client";
 
-import { DayTimeline, type DayEntry } from "@/app/components/day-timeline";
+import {
+  DayTimeline,
+  type DayEntry,
+  type TimelineProjectOption,
+} from "@/app/components/day-timeline";
 import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
@@ -91,14 +95,25 @@ type TimeEntryInsert = {
   location: string | null;
 };
 
-const KNOWN_PROJECT_IDS = [
-  "lykkecup",
-  "drift",
-  "klassebold",
-  "haandboldtjek",
-  "andet",
-] as const;
 const KNOWN_LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
+
+type ProjectRow = {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  sort_order: number | null;
+  created_at: string;
+};
+
+type ProjectSubcategoryRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number | null;
+  created_at: string;
+};
 
 function parseDbTimeToHour(dbTime: string): number {
   const [hhRaw, mmRaw] = dbTime.split(":");
@@ -115,10 +130,6 @@ function toDbTime(hour: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
 }
 
-function isKnownProjectId(value: string): value is DayEntry["project"] {
-  return (KNOWN_PROJECT_IDS as readonly string[]).includes(value);
-}
-
 function toKnownLocation(value: string | null): DayEntry["location"] {
   if (value && (KNOWN_LOCATIONS as readonly string[]).includes(value)) {
     return value as DayEntry["location"];
@@ -131,7 +142,7 @@ function mapRowToDayEntry(row: TimeEntryRow): DayEntry {
     id: row.id,
     startHour: parseDbTimeToHour(row.start_time),
     endHour: parseDbTimeToHour(row.end_time),
-    project: isKnownProjectId(row.project_id) ? row.project_id : "andet",
+    project: row.project_id || "andet",
     subcategory: row.subcategory,
     location: toKnownLocation(row.location),
   };
@@ -187,6 +198,10 @@ export default function Home() {
   const [dayEntries, setDayEntries] = useState<DayEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entriesError, setEntriesError] = useState<string>("");
+  const [projectOptions, setProjectOptions] = useState<TimelineProjectOption[]>(
+    []
+  );
+  const [projectsError, setProjectsError] = useState<string>("");
 
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -259,6 +274,71 @@ export default function Home() {
       isActive = false;
     };
   }, [session]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchProjectData = async () => {
+      if (!userId) {
+        if (isActive) {
+          setProjectOptions([]);
+          setProjectsError("");
+        }
+        return;
+      }
+
+      setProjectsError("");
+
+      const [{ data: projectsData, error: projectsFetchError }, { data: subData, error: subsFetchError }] =
+        await Promise.all([
+          supabase
+            .from("projects")
+            .select("id, name, slug, is_active, sort_order, created_at")
+            .eq("is_active", true)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true }),
+          supabase
+            .from("project_subcategories")
+            .select("id, project_id, name, is_active, sort_order, created_at")
+            .eq("is_active", true)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true }),
+        ]);
+
+      if (!isActive) return;
+
+      if (projectsFetchError || subsFetchError) {
+        setProjectsError("Kunne ikke hente projekter");
+        setProjectOptions([]);
+        return;
+      }
+
+      const projects = (projectsData ?? []) as ProjectRow[];
+      const subcategories = (subData ?? []) as ProjectSubcategoryRow[];
+
+      const groupedSubs = new Map<string, { id: string; label: string }[]>();
+      for (const sub of subcategories) {
+        const list = groupedSubs.get(sub.project_id) ?? [];
+        list.push({ id: sub.id, label: sub.name });
+        groupedSubs.set(sub.project_id, list);
+      }
+
+      const mapped: TimelineProjectOption[] = projects.map((project) => ({
+        id: project.slug,
+        slug: project.slug,
+        label: project.name,
+        subcategories: groupedSubs.get(project.id) ?? [],
+      }));
+
+      setProjectOptions(mapped);
+    };
+
+    void fetchProjectData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [userId]);
 
   async function fetchDayEntries(dayKey: string, forUserId: string) {
     const requestId = ++fetchRequestIdRef.current;
@@ -595,6 +675,11 @@ export default function Home() {
 
       {/* Fills remaining viewport; 08:00–16:00 scales to this area (no overlap under header) */}
       <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {projectsError ? (
+          <div className="mx-3 mt-1 rounded-lg border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] font-medium text-amber-700">
+            {projectsError}
+          </div>
+        ) : null}
         {entriesError ? (
           <div className="mx-3 mt-1 rounded-lg border border-rose-200/70 bg-rose-50/80 px-3 py-1.5 text-[11px] font-medium text-rose-700">
             {entriesError}
@@ -620,6 +705,7 @@ export default function Home() {
           <DayTimeline
             entries={dayEntries}
             onEntriesChange={syncDayEntries}
+            projectOptions={projectOptions}
           />
         </div>
 

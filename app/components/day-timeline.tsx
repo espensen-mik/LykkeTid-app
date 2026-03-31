@@ -8,48 +8,34 @@ const DAY_START = 8;
 const WORK_END = 16;
 const SLOT_DURATION_HOURS = 1;
 
-const PROJECT_OPTIONS = [
-  {
-    id: "lykkecup",
-    label: "LykkeCup",
-    subcategories: ["Markedsføring", "Eventplanlægning", "Møder", "Partnere"],
-    style: { from: "#fbbf24", to: "#f59e0b", border: "rgba(245,158,11,0.35)" },
-  },
-  {
-    id: "drift",
-    label: "Drift",
-    subcategories: ["Møder", "Administration", "Kommunikation"],
-    style: { from: "#4ca771", to: "#3f9a68", border: "rgba(76,167,113,0.35)" },
-  },
-  {
-    id: "klassebold",
-    label: "KlasseBold",
-    subcategories: [],
-    style: { from: "#7c3aed", to: "#6d28d9", border: "rgba(124,58,237,0.35)" },
-  },
-  {
-    id: "haandboldtjek",
-    label: "Håndboldtjek",
-    subcategories: [],
-    style: { from: "#f43f5e", to: "#e11d48", border: "rgba(244,63,94,0.35)" },
-  },
-  {
-    id: "andet",
-    label: "Andet",
-    subcategories: [],
-    style: { from: "#94a3b8", to: "#64748b", border: "rgba(100,116,139,0.35)" },
-  },
-] as const satisfies readonly {
+export type TimelineProjectSubcategory = {
   id: string;
   label: string;
-  subcategories: readonly string[];
-  style: { from: string; to: string; border: string };
-}[];
+};
 
-type ProjectOption = (typeof PROJECT_OPTIONS)[number];
-type ProjectId = ProjectOption["id"];
+export type TimelineProjectOption = {
+  id: string;
+  slug: string;
+  label: string;
+  subcategories: TimelineProjectSubcategory[];
+};
+
+const FALLBACK_PROJECT: TimelineProjectOption = {
+  id: "andet",
+  slug: "andet",
+  label: "Andet",
+  subcategories: [],
+};
 
 const LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
+const PROJECT_STYLE_PALETTE = [
+  { from: "#4ca771", to: "#3f9a68", border: "rgba(76,167,113,0.35)" },
+  { from: "#fbbf24", to: "#f59e0b", border: "rgba(245,158,11,0.35)" },
+  { from: "#7c3aed", to: "#6d28d9", border: "rgba(124,58,237,0.35)" },
+  { from: "#f43f5e", to: "#e11d48", border: "rgba(244,63,94,0.35)" },
+  { from: "#0ea5e9", to: "#0284c7", border: "rgba(14,165,233,0.35)" },
+  { from: "#94a3b8", to: "#64748b", border: "rgba(100,116,139,0.35)" },
+] as const;
 
 function formatHour(h: number): string {
   // `h` may be fractional (e.g. 10.25 = 10:15).
@@ -63,7 +49,7 @@ export type DayEntry = {
   id: string;
   startHour: number;
   endHour: number;
-  project: ProjectId;
+  project: string;
   subcategory: string | null;
   location: (typeof LOCATIONS)[number];
 };
@@ -71,15 +57,17 @@ export type DayEntry = {
 export function DayTimeline({
   entries,
   onEntriesChange,
+  projectOptions,
 }: {
   entries: DayEntry[];
   onEntriesChange: (next: DayEntry[]) => void;
+  projectOptions: TimelineProjectOption[];
 }) {
   type Draft = {
     id?: string;
     startHour: number;
     endHour: number;
-    project: ProjectId;
+    project: string;
     subcategory: string | null;
     location: (typeof LOCATIONS)[number];
   };
@@ -166,29 +154,45 @@ export function DayTimeline({
   }, [dayEnd]);
 
   const timelineHeightPx = slotCount * rowPx;
+  const effectiveProjectOptions = useMemo(
+    () => (projectOptions.length > 0 ? projectOptions : [FALLBACK_PROJECT]),
+    [projectOptions]
+  );
+  const defaultProjectId = effectiveProjectOptions[0].id;
   const projectById = useMemo(
-    () => new Map<ProjectId, ProjectOption>(PROJECT_OPTIONS.map((p) => [p.id, p])),
-    []
+    () =>
+      new Map<string, TimelineProjectOption>(
+        effectiveProjectOptions.map((p) => [p.id, p])
+      ),
+    [effectiveProjectOptions]
   );
   const projectIdSet = useMemo(
-    () => new Set<string>(PROJECT_OPTIONS.map((p) => p.id)),
-    []
-  );
-
-  const isProjectId = useCallback(
-    (value: string): value is ProjectId => projectIdSet.has(value),
-    [projectIdSet]
+    () => new Set<string>(effectiveProjectOptions.map((p) => p.id)),
+    [effectiveProjectOptions]
   );
 
   const toProjectId = useCallback(
-    (value: string): ProjectId => (isProjectId(value) ? value : PROJECT_OPTIONS[0].id),
-    [isProjectId]
+    (value: string): string => (projectIdSet.has(value) ? value : defaultProjectId),
+    [defaultProjectId, projectIdSet]
   );
 
   const getProjectOption = useCallback(
-    (projectId: ProjectId) => projectById.get(projectId) ?? PROJECT_OPTIONS[0],
+    (projectId: string): TimelineProjectOption =>
+      projectById.get(projectId) ?? {
+        id: projectId,
+        slug: projectId,
+        label: projectId,
+        subcategories: [],
+      },
     [projectById]
   );
+  const getProjectStyle = useCallback((projectId: string) => {
+    let hash = 0;
+    for (let i = 0; i < projectId.length; i += 1) {
+      hash = (hash * 31 + projectId.charCodeAt(i)) >>> 0;
+    }
+    return PROJECT_STYLE_PALETTE[hash % PROJECT_STYLE_PALETTE.length];
+  }, []);
 
   const openDraftForRange = useCallback(
     (startHour: number, endHour: number) => {
@@ -203,13 +207,13 @@ export function DayTimeline({
       setDraft({
         startHour: snapToQuarterHour(startHour),
         endHour: snapToQuarterHour(endHour),
-        project: PROJECT_OPTIONS[0].id,
+        project: defaultProjectId,
         subcategory: null,
         location: LOCATIONS[0],
       });
       setSheetOpen(true);
     },
-    [entries, dayEnd]
+    [defaultProjectId, entries, dayEnd]
   );
 
   const openDraftForEntry = useCallback((entry: DayEntry) => {
@@ -625,7 +629,7 @@ export function DayTimeline({
               const durationHours = displayEnd - displayStart;
               const durationMinutes = Math.round(durationHours * 60);
               const projectOption = getProjectOption(entry.project);
-              const projectStyle = projectOption.style;
+              const projectStyle = getProjectStyle(entry.project);
 
               const showProject = durationMinutes >= 30;
 
@@ -668,7 +672,7 @@ export function DayTimeline({
               setDraft({
                 startHour: 17,
                 endHour: 18,
-                project: PROJECT_OPTIONS[0].id,
+                project: defaultProjectId,
                 subcategory: null,
                 location: LOCATIONS[0],
               });
@@ -841,7 +845,9 @@ export function DayTimeline({
                       const nextProject = getProjectOption(nextProjectId);
                       const keepsSubcategory =
                         d.subcategory != null &&
-                        nextProject.subcategories.some((sub) => sub === d.subcategory);
+                        nextProject.subcategories.some(
+                          (sub) => sub.label === d.subcategory
+                        );
                       return {
                         ...d,
                         project: nextProjectId,
@@ -851,7 +857,7 @@ export function DayTimeline({
                   }}
                   className="w-full rounded-xl border border-line-soft/70 bg-white px-3 py-2 text-[14px] text-forest outline-none focus:ring-2 focus:ring-accent/35"
                 >
-                  {PROJECT_OPTIONS.map((p) => (
+                  {effectiveProjectOptions.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>
@@ -883,8 +889,8 @@ export function DayTimeline({
                   >
                     <option value="__none__">Kun projekt</option>
                     {getProjectOption(draft.project).subcategories.map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
+                      <option key={sub.id} value={sub.label}>
+                        {sub.label}
                       </option>
                     ))}
                   </select>
