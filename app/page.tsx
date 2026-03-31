@@ -86,10 +86,9 @@ export default function Home() {
     {}
   );
 
-  const [dayPickerOpen, setDayPickerOpen] = useState(false);
-  const [dayDraftKey, setDayDraftKey] = useState<string>("");
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const datePickerRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     const now = new Date();
     const key = toDayKey(now);
@@ -127,36 +126,64 @@ export default function Home() {
     return { weekday, dateLine };
   }, [selectedDate]);
 
+  const todayKey = useMemo(() => toDayKey(new Date()), []);
+  const isTodaySelected = selectedDayKey === todayKey;
+
   const [transitionDirection, setTransitionDirection] = useState<
     "next" | "prev" | null
   >(null);
+
+  const goToDayKey = (nextKey: string) => {
+    if (!nextKey) return;
+    if (!selectedDayKey) {
+      setSelectedDayKey(nextKey);
+      return;
+    }
+    const from = fromDayKey(selectedDayKey);
+    const to = fromDayKey(nextKey);
+    let dir: "next" | "prev" | null = null;
+    if (to.getTime() > from.getTime()) dir = "next";
+    else if (to.getTime() < from.getTime()) dir = "prev";
+    setTransitionDirection(dir);
+    setSelectedDayKey(nextKey);
+  };
 
   const goDay = (deltaDays: number) => {
     if (!selectedDayKey) return;
     const d = fromDayKey(selectedDayKey);
     d.setDate(d.getDate() + deltaDays);
     const key = toDayKey(d);
-    setSelectedDayKey(key);
+    goToDayKey(key);
   };
 
   const goWeek = (deltaWeeks: number) => goDay(deltaWeeks * 7);
 
-  const openDayPicker = () => {
-    if (!selectedDayKey) return;
-    setDayDraftKey(selectedDayKey);
-    setDayPickerOpen(true);
-  };
-
-  const closeDayPicker = () => setDayPickerOpen(false);
-
-  const saveDayPicker = () => {
-    if (!dayDraftKey) return;
-    setSelectedDayKey(dayDraftKey);
-    setDayPickerOpen(false);
+  const handleOpenDatePicker = () => {
+    const el = datePickerRef.current;
+    if (!el) return;
+    // Prefer modern showPicker when available (Safari / mobile browsers)
+    const anyEl = el as HTMLInputElement & { showPicker?: () => void };
+    if (typeof anyEl.showPicker === "function") {
+      anyEl.showPicker();
+    } else {
+      el.click();
+    }
   };
 
   return (
     <main className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden sm:max-w-xl">
+      {/* Hidden native date picker driven by the calendar icon */}
+      <input
+        ref={datePickerRef}
+        type="date"
+        className="absolute h-0 w-0 opacity-0 pointer-events-none"
+        value={selectedDayKey || todayKey}
+        onChange={(e) => {
+          const value = e.target.value;
+          if (!value) return;
+          goToDayKey(value);
+        }}
+      />
       <header className="z-[100] w-full shrink-0 bg-white/55 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="px-3 pb-1.5 pt-2">
           <div className="flex items-center justify-between gap-2">
@@ -167,7 +194,7 @@ export default function Home() {
             <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
-                onClick={openDayPicker}
+                onClick={handleOpenDatePicker}
                 aria-label="Åbn kalender"
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-line-soft/55 bg-white/50 text-evergreen/75 shadow-sm hover:bg-pastel/25"
               >
@@ -196,30 +223,22 @@ export default function Home() {
               <div className="text-[10px] font-normal text-evergreen/55">
                 {selectedDate ? formatMonthYear(selectedDate) : ""}
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-label="Forrige dag"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line-soft/70 bg-white/80 text-evergreen/70 shadow-sm hover:bg-pastel/25 active:scale-[0.97] transition"
-                  onClick={() => {
-                    setTransitionDirection("prev");
-                    goDay(-1);
-                  }}
-                >
-                  <span className="text-[16px] leading-none">‹</span>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Næste dag"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line-soft/70 bg-white/80 text-evergreen/70 shadow-sm hover:bg-pastel/25 active:scale-[0.97] transition"
-                  onClick={() => {
-                    setTransitionDirection("next");
-                    goDay(1);
-                  }}
-                >
-                  <span className="text-[16px] leading-none">›</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                aria-label="Gå til i dag"
+                onClick={() => {
+                  if (!todayKey) return;
+                  goToDayKey(todayKey);
+                }}
+                className={[
+                  "rounded-full border px-3 py-1 text-[10px] font-semibold transition",
+                  isTodaySelected
+                    ? "border-line-soft/50 bg-white/80 text-evergreen/45"
+                    : "border-line-soft/70 bg-white/90 text-evergreen/80 shadow-sm hover:bg-pastel/25",
+                ].join(" ")}
+              >
+                I dag
+              </button>
             </div>
             <div className="text-[13px] font-normal leading-snug text-evergreen/80">
               <span className="capitalize">{headerDateText.weekday}</span>
@@ -266,7 +285,7 @@ export default function Home() {
                     key={key}
                     type="button"
                     onClick={() => {
-                      setSelectedDayKey(key);
+                      goToDayKey(key);
                     }}
                     aria-label={`Vælg ${formatDay(d)}`}
                     className="flex min-w-0 flex-col items-center rounded-lg py-0.5 transition-colors hover:bg-pastel/25"
@@ -293,7 +312,7 @@ export default function Home() {
       </header>
 
       {/* Fills remaining viewport; 08:00–16:00 scales to this area (no overlap under header) */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div
           key={selectedDayKey ?? "no-day"}
           className={[
@@ -311,9 +330,26 @@ export default function Home() {
             onEntriesChange={setSelectedEntries}
           />
         </div>
+
+        {/* Floating side day navigation arrows */}
+        <button
+          type="button"
+          aria-label="Forrige dag"
+          className="pointer-events-auto absolute left-3 top-1/2 z-[130] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          onClick={() => goDay(-1)}
+        >
+          <span className="text-[18px] leading-none">‹</span>
+        </button>
+        <button
+          type="button"
+          aria-label="Næste dag"
+          className="pointer-events-auto absolute right-3 top-1/2 z-[130] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/65 bg-white/70 text-evergreen/80 shadow-[0_10px_30px_rgba(15,42,29,0.18)] backdrop-blur-md active:scale-[0.97] transition"
+          onClick={() => goDay(1)}
+        >
+          <span className="text-[18px] leading-none">›</span>
+        </button>
       </section>
 
-      {/* Day picker bottom sheet */}
       {profileOpen && (
         <div className="fixed inset-0 z-[205] flex items-end">
           <button
@@ -338,62 +374,6 @@ export default function Home() {
                 aria-label="Luk"
               >
                 <span className="text-[18px] leading-none">×</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {dayPickerOpen && (
-        <div className="fixed inset-0 z-[210] flex items-end">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/25 backdrop-blur-sm"
-            aria-label="Luk kalender"
-            onClick={closeDayPicker}
-          />
-          <div className="relative w-full rounded-t-[1.5rem] bg-white/95 px-4 pb-6 pt-4 ring-1 ring-forest-deep/[0.05] sm:px-6">
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-forest">Vælg dato</div>
-              </div>
-              <button
-                type="button"
-                onClick={closeDayPicker}
-                className="rounded-xl px-2 py-2 text-evergreen/70 hover:bg-pastel/35"
-                aria-label="Annuller kalender"
-              >
-                <span className="text-[18px] leading-none">×</span>
-              </button>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-[12px] font-semibold text-forest">
-                Dato
-              </label>
-              <input
-                type="date"
-                value={dayDraftKey}
-                onChange={(e) => setDayDraftKey(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-line-soft/70 bg-white px-3 py-2 text-[14px] text-forest outline-none focus:ring-2 focus:ring-accent/35"
-              />
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={closeDayPicker}
-                className="flex-1 rounded-xl border border-line-soft/75 bg-white px-3 py-2 text-[14px] font-semibold text-forest transition-colors hover:bg-pastel/25"
-              >
-                Annuller
-              </button>
-              <button
-                type="button"
-                onClick={saveDayPicker}
-                className="flex-1 rounded-xl bg-accent px-3 py-2 text-[14px] font-semibold text-white shadow-[0_12px_30px_-18px_rgba(76,167,113,0.75)] transition-colors hover:bg-accent-mid"
-              >
-                Vælg
               </button>
             </div>
           </div>

@@ -11,6 +11,11 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "LykkeTid",
   description: "Enkel dagsbaseret tidsregistrering",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 /** Lets `env(safe-area-inset-*)` match the notch / home indicator on iPhone. */
