@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 const DAY_START = 8;
@@ -721,10 +722,10 @@ export function DayTimeline({
               <button
                 type="button"
                 onClick={cancelDraft}
-                className="rounded-xl px-2 py-2 text-evergreen/70 transition-colors hover:bg-pastel/35 hover:text-evergreen/95"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/70 text-evergreen/72 shadow-sm transition-colors hover:bg-pastel/35 hover:text-evergreen/95"
                 aria-label="Annuller"
               >
-                <span className="text-[18px] leading-none">×</span>
+                <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
               </button>
             </div>
 

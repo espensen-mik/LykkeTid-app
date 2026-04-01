@@ -8,7 +8,7 @@ import {
 import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
-import { Clock3 } from "lucide-react";
+import { Clock3, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function pad2(n: number): string {
@@ -96,6 +96,17 @@ type TimeEntryInsert = {
 };
 
 const KNOWN_LOCATIONS = ["Kontor", "Hjemme", "Hal", "Ude"] as const;
+const PROFILE_FUN_QUOTES = [
+  "Lykken først... også når du timeregistrerer!",
+  "Vidste du, at mennesker der timeregistrerer, sjældent rammes af tarmproblemer?",
+  "“Timus Registratus Lykkelilus\" - Sokrates",
+  "“Jeg timeregistrerer, derfor er jeg\" - Descartes",
+  "Hvis ikke det er timeregistreret, er det ikke sket!",
+  "Vidste du, at romerne opfandt timeregistrering",
+  "Har du været god i dag? Så skal det da næsten timeregistreres!",
+  "Tiden flyver - registrer den!",
+  "“Let me registrate you” - Robbie Williams",
+] as const;
 
 type ProjectRow = {
   id: string;
@@ -237,6 +248,7 @@ export default function Home() {
   const [projectsError, setProjectsError] = useState<string>("");
   const [profileEntries, setProfileEntries] = useState<TimeEntryRow[]>([]);
   const [profileEntriesLoading, setProfileEntriesLoading] = useState(false);
+  const [profileFunQuote, setProfileFunQuote] = useState<string>("");
 
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -393,6 +405,12 @@ export default function Home() {
       isActive = false;
     };
   }, [profileOpen, userId]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const randomIndex = Math.floor(Math.random() * PROFILE_FUN_QUOTES.length);
+    setProfileFunQuote(PROFILE_FUN_QUOTES[randomIndex] ?? "");
+  }, [profileOpen]);
 
   async function fetchDayEntries(dayKey: string, forUserId: string) {
     const requestId = ++fetchRequestIdRef.current;
@@ -867,10 +885,10 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setProfileOpen(false)}
-                className="rounded-xl px-2 py-2 text-evergreen/70 hover:bg-pastel/35"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/70 text-evergreen/72 shadow-sm transition-colors hover:bg-pastel/35 hover:text-evergreen/95"
                 aria-label="Luk"
               >
-                <span className="text-[18px] leading-none">×</span>
+                <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
               </button>
             </div>
             <div className="mt-4 rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm">
@@ -927,6 +945,11 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {profileFunQuote ? (
+              <div className="mx-auto mt-4 max-w-[19rem] px-2 text-center text-[11px] italic leading-relaxed text-evergreen/62">
+                {profileFunQuote}
+              </div>
+            ) : null}
             <div className="mt-4">
               <button
                 type="button"
