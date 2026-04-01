@@ -12,10 +12,11 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo } from "react";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { useAdminContext } from "../../admin-provider";
 import { AdminKpiCard } from "../../_components/admin-kpi";
 import { PeriodToggle } from "../../_components/period-toggle";
-import { formatHours, getInitials, getProjectColor } from "../../admin-utils";
+import { formatHours, getInitials, getProjectColor, getProjectColorSoft } from "../../admin-utils";
 
 export default function AdminProjectDetailPage() {
   const params = useParams();
@@ -38,6 +39,14 @@ export default function AdminProjectDetailPage() {
   );
 
   const color = getProjectColor(slug);
+  const subcategoryTotal = row?.bySubcategory.reduce((sum, sub) => sum + sub.hours, 0) ?? 0;
+  const subcategoryChartData =
+    row?.bySubcategory.map((sub, index) => ({
+      name: sub.name,
+      value: sub.hours,
+      pct: subcategoryTotal > 0 ? (sub.hours / subcategoryTotal) * 100 : 0,
+      color: `${color}${["FF", "D9", "B8", "99", "80", "66", "4D"][index % 7]}`,
+    })) ?? [];
 
   if (!row) {
     return (
@@ -136,7 +145,10 @@ export default function AdminProjectDetailPage() {
                   className="flex items-center justify-between rounded-xl px-3 py-2.5 ring-1 ring-black/[0.04]"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#C0E6BA] text-[10px] font-semibold text-[#0F2A1D]">
+                    <span
+                      className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold text-[#0F2A1D]"
+                      style={{ backgroundColor: getProjectColorSoft(row.projectSlug) }}
+                    >
                       {user.avatarUrl ? (
                         <span
                           className="h-full w-full bg-cover bg-center"
@@ -196,16 +208,68 @@ export default function AdminProjectDetailPage() {
             <ListTree className="h-5 w-5 text-[#0F2A1D]/60" />
             <h2 className="text-lg font-medium text-[#0F2A1D]">Fordeling på underpunkter</h2>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {row.bySubcategory.map((sub) => (
-              <div
-                key={`${row.projectSlug}-${sub.name}`}
-                className="flex items-center justify-between rounded-xl px-3 py-2.5 ring-1 ring-black/[0.04]"
-              >
-                <span className="text-[#0F2A1D]">{sub.name}</span>
-                <span className="text-sm text-[#0F2A1D]/60">{formatHours(sub.hours)} t</span>
-              </div>
-            ))}
+          <div className="mt-4 grid gap-6 lg:grid-cols-[260px_1fr]">
+            <div className="relative h-[220px] w-full max-w-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={subcategoryChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={58}
+                    outerRadius={92}
+                    paddingAngle={subcategoryChartData.length > 1 ? 2 : 0}
+                  >
+                    {subcategoryChartData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, _name, item) => {
+                      const num = Number(value ?? 0);
+                      const pct = Number(item?.payload?.pct ?? 0);
+                      return `${formatHours(num)} t (${pct.toFixed(1)}%)`;
+                    }}
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(15,42,29,0.08)",
+                      boxShadow: "0 8px 24px -12px rgba(15,42,29,0.15)",
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              {subcategoryChartData.length === 1 ? (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="max-w-[120px] truncate text-xs font-semibold text-[#0F2A1D]/75">
+                      {subcategoryChartData[0]?.name}
+                    </div>
+                    <div className="text-sm font-bold text-[#0F2A1D]">100%</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              {subcategoryChartData.map((sub) => (
+                <div key={`${row.projectSlug}-${sub.name}`} className="rounded-xl px-3 py-2.5 ring-1 ring-black/[0.04]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: sub.color }}
+                      />
+                      <span className="truncate text-[#0F2A1D]">{sub.name}</span>
+                    </div>
+                    <span className="shrink-0 text-sm text-[#0F2A1D]/60">
+                      {formatHours(sub.value)} t ({sub.pct.toFixed(0)}%)
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       ) : null}

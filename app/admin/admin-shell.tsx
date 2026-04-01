@@ -10,10 +10,11 @@ import {
   Clock3,
   LayoutDashboard,
   Search,
+  Settings,
   Users,
 } from "lucide-react";
 import { useAdminContext } from "./admin-provider";
-import { getInitials } from "./admin-utils";
+import { getInitials, slugify } from "./admin-utils";
 
 const BG = "#F8FAF9";
 const PRIMARY = "#0F2A1D";
@@ -29,6 +30,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     projects,
     adminDataLoading,
     adminDataError,
+    projectName,
+    setProjectName,
+    projectSlug,
+    setProjectSlug,
+    projectSortOrder,
+    setProjectSortOrder,
+    handleCreateProject,
+    creatingProject,
+    createProjectError,
   } = useAdminContext();
 
   if (authLoading || profileLoading) {
@@ -161,6 +171,61 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               })
             )}
           </ul>
+
+          <p className="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+            Indstillinger
+          </p>
+          <div className="rounded-xl border border-black/[0.06] bg-[#F8FAF9] p-3">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#0F2A1D]">
+              <Settings className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              <span>Opret projekt</span>
+            </div>
+            <form onSubmit={handleCreateProject} className="space-y-2">
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setProjectName(next);
+                  setProjectSlug(slugify(next));
+                }}
+                placeholder="Navn"
+                required
+                className="w-full rounded-lg border border-black/[0.08] bg-white px-2.5 py-1.5 text-[12px] text-[#0F2A1D] outline-none ring-[#0F2A1D]/15 focus:ring-2"
+              />
+              <input
+                type="text"
+                value={projectSlug}
+                onChange={(e) => setProjectSlug(slugify(e.target.value))}
+                placeholder="Slug"
+                required
+                className="w-full rounded-lg border border-black/[0.08] bg-white px-2.5 py-1.5 text-[12px] text-[#0F2A1D] outline-none ring-[#0F2A1D]/15 focus:ring-2"
+              />
+              <input
+                type="number"
+                value={projectSortOrder}
+                onChange={(e) => setProjectSortOrder(e.target.value)}
+                placeholder="Sortering"
+                className="w-full rounded-lg border border-black/[0.08] bg-white px-2.5 py-1.5 text-[12px] text-[#0F2A1D] outline-none ring-[#0F2A1D]/15 focus:ring-2"
+              />
+              <button
+                type="submit"
+                disabled={creatingProject}
+                className="w-full rounded-lg bg-[#0F2A1D] py-2 text-[12px] font-semibold text-white shadow-sm disabled:opacity-60"
+              >
+                {creatingProject ? "Gemmer..." : "Opret"}
+              </button>
+            </form>
+            {createProjectError ? (
+              <p className="mt-2 text-[11px] font-medium text-[#D62839]">{createProjectError}</p>
+            ) : null}
+            <Link
+              href="/admin/projects"
+              className="mt-3 block text-center text-[11px] font-medium text-[#0F2A1D]/55 underline-offset-2 hover:text-[#0F2A1D] hover:underline"
+            >
+              Underpunkter og mere
+            </Link>
+          </div>
         </nav>
 
         <div className="border-t border-black/[0.06] p-4">

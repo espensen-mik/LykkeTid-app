@@ -18,7 +18,13 @@ import Link from "next/link";
 import { useAdminContext } from "../admin-provider";
 import { AdminKpiCard } from "./admin-kpi";
 import { PeriodToggle } from "./period-toggle";
-import { formatHours, getEntryDurationHours, getInitials, getProjectColor } from "../admin-utils";
+import {
+  formatHours,
+  getEntryDurationHours,
+  getInitials,
+  getProjectColor,
+  getProjectColorSoft,
+} from "../admin-utils";
 
 export function AdminDashboard() {
   const {
@@ -318,7 +324,7 @@ export function AdminDashboard() {
                               className="relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-semibold shadow-sm"
                               style={{
                                 zIndex: avatarUsers.length - index,
-                                backgroundColor: avatarUrl ? undefined : "#C0E6BA",
+                                backgroundColor: avatarUrl ? undefined : getProjectColorSoft(row.projectSlug),
                                 color: "#0F2A1D",
                               }}
                               title={name}

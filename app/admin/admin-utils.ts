@@ -136,14 +136,64 @@ export function getRegistrationBarColor(value: number): string {
   return "#0F2A1D";
 }
 
-export function getProjectColor(projectSlug: string): string {
-  const slug = projectSlug.toLowerCase();
-  if (slug === "drift") return "#4ca771";
-  if (slug === "lykkecup") return "#f59e0b";
-  if (slug === "klassebold") return "#7c3aed";
-  if (slug === "haandboldtjek") return "#e11d48";
-  if (slug === "andet") return "#64748b";
-  return "#6b9071";
+export const PROJECT_COLORS = [
+  "#6050DC", // purple
+  "#D52DB7", // magenta
+  "#FF2E7E", // pink
+  "#FF6B45", // coral
+  "#FFAB05", // yellow
+  "#22C55E", // green
+  "#06B6D4", // cyan
+] as const;
+
+const PROJECT_COLOR_STORAGE_KEY = "lykketid.projectColorMap";
+const projectColorMap: Record<string, string> = {};
+let projectColorMapHydrated = false;
+
+function hydrateProjectColorMap() {
+  if (projectColorMapHydrated) return;
+  projectColorMapHydrated = true;
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(PROJECT_COLOR_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    if (!parsed || typeof parsed !== "object") return;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof key === "string" && typeof value === "string") {
+        projectColorMap[key] = value;
+      }
+    }
+  } catch {
+    // Ignore invalid storage data.
+  }
+}
+
+function persistProjectColorMap() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROJECT_COLOR_STORAGE_KEY, JSON.stringify(projectColorMap));
+  } catch {
+    // Ignore storage persistence errors.
+  }
+}
+
+export function getProjectColor(projectId: string): string {
+  hydrateProjectColorMap();
+  const key = projectId.trim().toLowerCase();
+  if (!key) return PROJECT_COLORS[0];
+
+  if (!projectColorMap[key]) {
+    const index = Object.keys(projectColorMap).length;
+    projectColorMap[key] = PROJECT_COLORS[index % PROJECT_COLORS.length];
+    persistProjectColorMap();
+  }
+
+  return projectColorMap[key];
+}
+
+export function getProjectColorSoft(projectId: string): string {
+  return `${getProjectColor(projectId)}20`;
 }
 
 export function buildPieSegments(
