@@ -5,10 +5,12 @@ import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
 import {
+  BarChart3,
   ChevronDown,
   ChevronUp,
   Clock3,
   Download,
+  FolderKanban,
   ListTree,
   Percent,
   TrendingUp,
@@ -17,6 +19,16 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type Profile = {
   id: string;
@@ -55,7 +67,7 @@ type TimeEntryRow = {
 };
 
 type AdminTab = "time-usage" | "project-management" | "users";
-type ReportRange = "weekly" | "monthly" | "all";
+type ReportRange = "weekly" | "monthly" | "quarter" | "year";
 
 function slugify(input: string): string {
   return input
@@ -120,6 +132,11 @@ function getStartOfCurrentMonth(): Date {
   return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 }
 
+function getStartMonthsAgo(monthsBack: number): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() - monthsBack, 1, 0, 0, 0, 0);
+}
+
 function getEndOfToday(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -166,6 +183,26 @@ function getRecentWeekdays(count: number): Date[] {
     cursor.setDate(cursor.getDate() - 1);
   }
   return days.reverse();
+}
+
+function getWeekdaysInRange(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(12, 0, 0, 0);
+  const endAtNoon = new Date(end);
+  endAtNoon.setHours(12, 0, 0, 0);
+  while (cursor <= endAtNoon) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function getRegistrationBarColor(value: number): string {
+  if (value < 50) return "#D62839";
+  if (value < 80) return "#f59e0b";
+  return "#0F2A1D";
 }
 
 function getProjectColor(projectSlug: string): string {
@@ -219,23 +256,23 @@ function KpiCard({
   return (
     <article
       className={[
-        "rounded-2xl border border-line-soft/60 bg-white/85 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]",
+        "rounded-2xl border border-[#C0E6BA] bg-white shadow-md transition-shadow hover:shadow-lg",
         compact ? "p-3" : "p-4",
       ].join(" ")}
     >
-      <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-evergreen/60">
+      <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-[#0F2A1D]/60">
         {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
         <span>{label}</span>
       </div>
       <div
         className={[
-          "mt-1 font-bold leading-none text-forest",
-          compact ? "text-[20px]" : "text-[28px]",
+          "mt-1 font-bold leading-none text-[#0F2A1D]",
+          compact ? "text-[22px]" : "text-4xl",
         ].join(" ")}
       >
         {value}
       </div>
-      {helper ? <div className="mt-1 text-[11px] text-evergreen/62">{helper}</div> : null}
+      {helper ? <div className="mt-1 text-[11px] text-[#0F2A1D]/62">{helper}</div> : null}
     </article>
   );
 }
@@ -264,7 +301,7 @@ export default function AdminPage() {
   const [subcategoryError, setSubcategoryError] = useState("");
   const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>("time-usage");
-  const [summaryRange, setSummaryRange] = useState<ReportRange>("monthly");
+  const [summaryRange, setSummaryRange] = useState<ReportRange>("quarter");
   const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(null);
 
   useEffect(() => {
@@ -513,19 +550,26 @@ export default function AdminPage() {
         end: getEndOfToday(),
       };
     }
+    if (summaryRange === "quarter") {
+      return {
+        label: "3 mdr",
+        helper: "Seneste 3 måneder til i dag",
+        start: getStartMonthsAgo(2),
+        end: getEndOfToday(),
+      };
+    }
     return {
-      label: "alt",
-      helper: "Alle registreringer",
-      start: null as Date | null,
-      end: null as Date | null,
+      label: "12 mdr",
+      helper: "Seneste 12 måneder til i dag",
+      start: getStartMonthsAgo(11),
+      end: getEndOfToday(),
     };
   }, [summaryRange]);
 
   const summaryFilteredEntries = useMemo(() => {
-    if (!periodMeta.start || !periodMeta.end) return timeEntries;
     return timeEntries.filter((entry) => {
       const date = parseDayKeyToDate(entry.entry_date);
-      return date >= periodMeta.start! && date <= periodMeta.end!;
+      return date >= periodMeta.start && date <= periodMeta.end;
     });
   }, [periodMeta, timeEntries]);
 
@@ -593,12 +637,7 @@ export default function AdminPage() {
     return activeProjects
       .map((project) => {
         const rangeEntries = filteredTimeEntries.filter((e) => e.project_id === project.slug);
-        const allEntries = timeEntries.filter((e) => e.project_id === project.slug);
         const periodHours = rangeEntries.reduce(
-          (sum, entry) => sum + getEntryDurationHours(entry.start_time, entry.end_time),
-          0
-        );
-        const totalHoursOverall = allEntries.reduce(
           (sum, entry) => sum + getEntryDurationHours(entry.start_time, entry.end_time),
           0
         );
@@ -622,7 +661,7 @@ export default function AdminPage() {
           .sort((a, b) => b.hours - a.hours);
 
         const byMonthMap = new Map<string, number>();
-        for (const entry of allEntries) {
+        for (const entry of rangeEntries) {
           const monthKey = entry.entry_date.slice(0, 7);
           const hours = getEntryDurationHours(entry.start_time, entry.end_time);
           byMonthMap.set(monthKey, (byMonthMap.get(monthKey) ?? 0) + hours);
@@ -645,7 +684,6 @@ export default function AdminPage() {
           projectSlug: project.slug,
           projectName: project.name,
           periodHours,
-          totalHoursOverall,
           sharePct: totalRangeHours > 0 ? (periodHours / totalRangeHours) * 100 : 0,
           userIds,
           byUser,
@@ -655,9 +693,10 @@ export default function AdminPage() {
         };
       })
       .sort((a, b) => b.periodHours - a.periodHours);
-  }, [avatarByUserId, filteredTimeEntries, profileNameById, projects, timeEntries, timeUsageByProject]);
+  }, [avatarByUserId, filteredTimeEntries, profileNameById, projects, timeUsageByProject]);
 
   const summaryPeriodLabel = periodMeta.label;
+  const monthsToShow = summaryRange === "weekly" ? 1 : summaryRange === "monthly" ? 1 : summaryRange === "quarter" ? 3 : 12;
 
   const summaryKpis = useMemo(() => {
     let totalHours = 0;
@@ -672,27 +711,20 @@ export default function AdminPage() {
 
     const activeEmployees = userIds.size;
     const activeProjects = projectIds.size;
-    let registrationRatePct: number | null = null;
-    let registrationRateHelper = "Ikke relevant for hele perioden";
+    const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
+    const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
+    const expectedTotal = activeEmployees * expectedHoursPerEmployee;
+    const registrationRatePct = expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
+    const registrationRateHelper =
+      summaryRange === "weekly"
+        ? "Baseret på arbejdsdage indtil i dag"
+        : summaryRange === "monthly"
+        ? "Baseret på arbejdsdage i måneden til dato"
+        : summaryRange === "quarter"
+        ? "Baseret på arbejdsdage i de seneste 3 måneder"
+        : "Baseret på arbejdsdage i de seneste 12 måneder";
 
-    if (summaryRange === "weekly" && periodMeta.start && periodMeta.end) {
-      const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
-      const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
-      const expectedTotal = activeEmployees * expectedHoursPerEmployee;
-      registrationRatePct =
-        expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
-      registrationRateHelper = "Baseret på arbejdsdage indtil i dag";
-    } else if (summaryRange === "monthly" && periodMeta.start && periodMeta.end) {
-      const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
-      const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
-      const expectedTotal = activeEmployees * expectedHoursPerEmployee;
-      registrationRatePct =
-        expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
-      registrationRateHelper = "Baseret på arbejdsdage i måneden til dato";
-    }
-
-    const clampedRegistrationRatePct =
-      registrationRatePct === null ? null : Math.max(0, registrationRatePct);
+    const clampedRegistrationRatePct = Math.max(0, registrationRatePct);
 
     return {
       totalHours,
@@ -702,6 +734,39 @@ export default function AdminPage() {
       registrationRateHelper,
     };
   }, [periodMeta.end, periodMeta.start, summaryFilteredEntries, summaryRange]);
+
+  const registrationByDay = useMemo(() => {
+    const todayEnd = getEndOfToday();
+    const weekdays = getWeekdaysInRange(periodMeta.start, todayEnd).slice(-7);
+    const activeEmployees = profiles.length;
+
+    const hoursByDay = new Map<string, number>();
+    for (const entry of summaryFilteredEntries) {
+      const current = hoursByDay.get(entry.entry_date) ?? 0;
+      hoursByDay.set(
+        entry.entry_date,
+        current + getEntryDurationHours(entry.start_time, entry.end_time)
+      );
+    }
+
+    return weekdays.map((dayDate) => {
+      const dayKey = toDayKey(dayDate);
+      const actual = hoursByDay.get(dayKey) ?? 0;
+      const expected = activeEmployees * 7.5;
+      const percentage = expected > 0 ? (actual / expected) * 100 : 0;
+      const dayLabel = new Intl.DateTimeFormat("da-DK", { weekday: "short" })
+        .format(dayDate)
+        .replace(".", "");
+      return {
+        dayKey,
+        dayLabel,
+        percentage: Number.isFinite(percentage) ? Math.max(0, percentage) : 0,
+        actual,
+        expected,
+        fill: getRegistrationBarColor(percentage),
+      };
+    });
+  }, [periodMeta.start, profiles.length, summaryFilteredEntries]);
 
   const exportProjectCsv = (projectSlug: string) => {
     const target = projectDashboardRows.find((row) => row.projectSlug === projectSlug);
@@ -892,62 +957,80 @@ export default function AdminPage() {
     );
   }
 
+  const adminDisplayName = profile.full_name?.trim() || session.user.email || "Admin";
+  const adminDisplayTitle = profile.title?.trim() || "Admin";
+  const adminAvatarUrl = profile.avatar_url?.trim() || null;
+  const adminInitials = getInitials(adminDisplayName);
+
   return (
-    <main className="mx-auto h-full min-h-0 w-full max-w-6xl overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-[26px] font-bold tracking-tight text-forest">
+    <main className="mx-auto h-full min-h-0 w-full max-w-6xl overflow-y-auto bg-[#EAF9E7] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="rounded-2xl border border-[#C0E6BA] bg-[#E3EED4] p-4 shadow-md">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="flex items-center gap-2 text-[26px] font-bold tracking-tight text-[#0F2A1D]">
             <Clock3 className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
             <span>LykkeTid Admin</span>
           </h1>
-        </div>
-        <div className="rounded-xl border border-line-soft/60 bg-white/75 px-3 py-2 text-right">
-          <div className="text-[13px] font-semibold text-forest">
-            {profile.full_name || session.user.email}
-          </div>
-          <div className="text-[12px] text-evergreen/65">
-            {profile.title || "Admin"}
-          </div>
-        </div>
-      </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab("time-usage")}
-          className={[
-            "rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
-            activeTab === "time-usage"
-              ? "border-accent/50 bg-accent/10 text-forest"
-              : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
-          ].join(" ")}
-        >
-          Tidsforbrug
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("project-management")}
-          className={[
-            "rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
-            activeTab === "project-management"
-              ? "border-accent/50 bg-accent/10 text-forest"
-              : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
-          ].join(" ")}
-        >
-          Projekter
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("users")}
-          className={[
-            "rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
-            activeTab === "users"
-              ? "border-accent/50 bg-accent/10 text-forest"
-              : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
-          ].join(" ")}
-        >
-          Brugere
-        </button>
+          <div className="flex items-center gap-3 rounded-2xl border border-[#C0E6BA] bg-white px-3 py-2 shadow-sm">
+            <span className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#C0E6BA] text-[12px] font-semibold text-[#0F2A1D]">
+              {adminAvatarUrl ? (
+                <span
+                  className="h-full w-full bg-cover bg-center"
+                  style={{ backgroundImage: `url("${adminAvatarUrl}")` }}
+                  aria-hidden="true"
+                />
+              ) : (
+                adminInitials || "A"
+              )}
+            </span>
+            <div className="text-left leading-tight">
+              <div className="text-[13px] font-semibold text-[#0F2A1D]">{adminDisplayName}</div>
+              <div className="text-[12px] text-[#0F2A1D]/65">{adminDisplayTitle}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("time-usage")}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
+              activeTab === "time-usage"
+                ? "border-[#0F2A1D] bg-[#0F2A1D] text-white shadow-sm"
+                : "border-[#C0E6BA] bg-white text-[#0F2A1D] hover:bg-[#C0E6BA]/45",
+            ].join(" ")}
+          >
+            <BarChart3 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            <span>Tidsforbrug</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("project-management")}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
+              activeTab === "project-management"
+                ? "border-[#0F2A1D] bg-[#0F2A1D] text-white shadow-sm"
+                : "border-[#C0E6BA] bg-white text-[#0F2A1D] hover:bg-[#C0E6BA]/45",
+            ].join(" ")}
+          >
+            <FolderKanban className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            <span>Projekter</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("users")}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-semibold transition",
+              activeTab === "users"
+                ? "border-[#0F2A1D] bg-[#0F2A1D] text-white shadow-sm"
+                : "border-[#C0E6BA] bg-white text-[#0F2A1D] hover:bg-[#C0E6BA]/45",
+            ].join(" ")}
+          >
+            <Users className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            <span>Brugere</span>
+          </button>
+        </div>
       </div>
 
       {adminDataError ? (
@@ -962,14 +1045,15 @@ export default function AdminPage() {
         </div>
       ) : activeTab === "time-usage" ? (
         <div className="mt-6 space-y-4">
-          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+          <section className="rounded-2xl border border-[#C0E6BA] bg-[#E3EED4] p-4 shadow-md">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-[16px] font-semibold text-forest">Rapportperiode</h2>
+              <h2 className="text-xl font-semibold text-[#0F2A1D]">Rapportperiode</h2>
               <div className="flex items-center gap-2">
                 {([
-                  ["weekly", "Denne uge"],
-                  ["monthly", "Denne måned"],
-                  ["all", "Alt"],
+                  ["weekly", "Uge"],
+                  ["monthly", "Måned"],
+                  ["quarter", "3 mdr"],
+                  ["year", "12 mdr"],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -978,8 +1062,8 @@ export default function AdminPage() {
                     className={[
                       "rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition",
                       summaryRange === value
-                        ? "border-accent/50 bg-accent/10 text-forest"
-                        : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
+                        ? "border-[#0F2A1D] bg-[#0F2A1D] text-white"
+                        : "border-[#C0E6BA] bg-white text-[#0F2A1D] hover:bg-[#C0E6BA]/60",
                     ].join(" ")}
                   >
                     {label}
@@ -1008,44 +1092,37 @@ export default function AdminPage() {
               helper="Unikke projekter med registreringer"
               icon={ListTree}
             />
-            <article className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-evergreen/60">
+            <article className="rounded-2xl border border-[#C0E6BA] bg-white p-4 shadow-md transition-shadow hover:shadow-lg">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-[#0F2A1D]/60">
                 <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Registreringsgrad</span>
               </div>
-              <div className="mt-1 text-[28px] font-bold leading-none text-forest">
-                {summaryKpis.registrationRatePct === null
-                  ? "—"
-                  : `${Math.round(summaryKpis.registrationRatePct)}%`}
+              <div className="mt-1 text-4xl font-bold leading-none text-[#0F2A1D]">
+                {`${Math.round(summaryKpis.registrationRatePct)}%`}
               </div>
-              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
+              <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#E3EED4] ring-1 ring-[#C0E6BA]">
                 <div
                   className={[
                     "h-full rounded-full",
-                    summaryKpis.registrationRatePct === null
-                      ? "bg-evergreen/25"
-                      : summaryKpis.registrationRatePct < 50
+                    summaryKpis.registrationRatePct < 50
                       ? "bg-rose-500"
                       : summaryKpis.registrationRatePct < 80
                       ? "bg-amber-400"
                       : "bg-accent",
                   ].join(" ")}
                   style={{
-                    width:
-                      summaryKpis.registrationRatePct === null
-                        ? "20%"
-                        : `${Math.min(100, Math.max(0, summaryKpis.registrationRatePct))}%`,
+                    width: `${Math.min(100, Math.max(0, summaryKpis.registrationRatePct))}%`,
                   }}
                 />
               </div>
-              <div className="mt-1 text-[11px] text-evergreen/62">
+              <div className="mt-1 text-[11px] text-[#0F2A1D]/62">
                 {summaryKpis.registrationRateHelper}
               </div>
             </article>
           </section>
 
-          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-            <h2 className="text-[16px] font-semibold text-forest">Fordeling af tid pr. projekt</h2>
+          <section className="rounded-2xl border border-[#C0E6BA] bg-[#E3EED4] p-4 shadow-md">
+            <h2 className="text-xl font-semibold text-[#0F2A1D]">Fordeling af tid pr. projekt</h2>
             {(() => {
               const usageMap = new Map<string, number>();
               for (const project of projects.filter((p) => p.is_active)) {
@@ -1133,9 +1210,60 @@ export default function AdminPage() {
             })()}
           </section>
 
-          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-            <h2 className="text-[16px] font-semibold text-forest">Projektoversigt</h2>
-            <p className="mt-1 text-[12px] text-evergreen/65">Timer og andel i valgt periode</p>
+          <section className="rounded-2xl border border-[#C0E6BA] bg-[#E3EED4] p-4 shadow-md">
+            <h2 className="text-xl font-semibold text-[#0F2A1D]">Registreringsgrad pr. dag</h2>
+            <div className="mt-1 text-[12px] text-[#0F2A1D]/65">
+              Registrerede timer pr. dag i forhold til forventet tid (7,5 t pr. medarbejder)
+            </div>
+            <div className="mt-3 h-[260px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={registrationByDay} margin={{ top: 8, right: 8, bottom: 4, left: -8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#dfe9dd" vertical={false} />
+                  <XAxis
+                    dataKey="dayLabel"
+                    tick={{ fontSize: 11, fill: "#5f7a67" }}
+                    axisLine={{ stroke: "#d8e4d5" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(value) => `${value}%`}
+                    tick={{ fontSize: 11, fill: "#5f7a67" }}
+                    axisLine={{ stroke: "#d8e4d5" }}
+                    tickLine={false}
+                    width={40}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(76, 167, 113, 0.08)" }}
+                    formatter={(value: number) => `${Number(value).toFixed(0)}%`}
+                    labelFormatter={(_, payload) => {
+                      const data = payload?.[0]?.payload as
+                        | {
+                            dayLabel: string;
+                            percentage: number;
+                            actual: number;
+                            expected: number;
+                          }
+                        | undefined;
+                      if (!data) return "";
+                      return `${data.dayLabel}: ${data.percentage.toFixed(0)}% · ${formatHours(
+                        data.actual
+                      )} / ${formatHours(data.expected)} timer registreret`;
+                    }}
+                  />
+                  <Bar dataKey="percentage" radius={[8, 8, 0, 0]}>
+                    {registrationByDay.map((entry) => (
+                      <Cell key={entry.dayKey} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#C0E6BA] bg-[#E3EED4] p-4 shadow-md">
+            <h2 className="text-xl font-semibold text-[#0F2A1D]">Projektoversigt</h2>
+            <p className="mt-1 text-[12px] text-[#0F2A1D]/65">Timer og andel i valgt periode</p>
             <div className="mt-3 space-y-2">
               {projectDashboardRows.map((row) => {
                 const isOpen = selectedProjectSlug === row.projectSlug;
@@ -1145,7 +1273,7 @@ export default function AdminPage() {
                 return (
                   <article
                     key={row.projectSlug}
-                    className="overflow-hidden rounded-xl border border-line-soft/40 bg-white/72"
+                    className="overflow-hidden rounded-2xl border border-[#C0E6BA] bg-white shadow-md transition-shadow hover:shadow-lg"
                   >
                     <button
                       type="button"
@@ -1175,7 +1303,7 @@ export default function AdminPage() {
                             </span>
                             <span className="font-semibold">{row.sharePct.toFixed(0)}%</span>
                           </div>
-                          <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
+                          <div className="mt-1 h-3 overflow-hidden rounded-full bg-[#E3EED4] ring-1 ring-[#C0E6BA]">
                             <div
                               className="h-full rounded-full"
                               style={{ width: shareWidth, backgroundColor: color }}
@@ -1242,8 +1370,8 @@ export default function AdminPage() {
                             icon={Clock3}
                           />
                           <KpiCard
-                            label="Timer i alt"
-                            value={formatHours(row.totalHoursOverall)}
+                            label="Registreringer"
+                            value={String(row.rangeEntries.length)}
                             compact
                             icon={Clock3}
                           />
@@ -1314,7 +1442,7 @@ export default function AdminPage() {
                                   Ingen historik endnu.
                                 </div>
                               ) : (
-                                row.byMonth.slice(0, 8).map((month) => {
+                                row.byMonth.slice(0, monthsToShow).map((month) => {
                                   const maxMonth = row.byMonth[0]?.hours ?? 0;
                                   const widthPct =
                                     maxMonth > 0 ? (month.hours / maxMonth) * 100 : 0;
@@ -1369,8 +1497,8 @@ export default function AdminPage() {
 
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft/30 pt-3">
                           <div className="text-[12px] text-evergreen/70">
-                            {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}: {formatHours(row.periodHours)} t · samlet:{" "}
-                            {formatHours(row.totalHoursOverall)} t
+                            {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}:{" "}
+                            {formatHours(row.periodHours)} t
                           </div>
                           <div className="flex items-center gap-2">
                             <button
