@@ -1,4 +1,4 @@
-import type { Profile, TimeEntryRow } from "./admin-types";
+import type { Profile, ReportRange, TimeEntryRow } from "./admin-types";
 
 export function slugify(input: string): string {
   return input
@@ -102,6 +102,130 @@ export function toDayKey(d: Date): string {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+export type ProjectHoursChartPoint = {
+  key: string;
+  axisLabel: string;
+  tooltipTitle: string;
+  hours: number;
+};
+
+function monthKeysBetweenInclusive(start: Date, end: Date): string[] {
+  const out: string[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1, 12, 0, 0, 0);
+  const endMonth = new Date(end.getFullYear(), end.getMonth(), 1, 12, 0, 0, 0);
+  while (cursor <= endMonth) {
+    out.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+}
+
+function dayKeysBetweenInclusive(start: Date, end: Date): string[] {
+  const out: string[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(12, 0, 0, 0);
+  const endAt = new Date(end);
+  endAt.setHours(12, 0, 0, 0);
+  while (cursor <= endAt) {
+    out.push(toDayKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
+function sumHoursOnDay(entries: readonly TimeEntryRow[], dayKey: string): number {
+  let total = 0;
+  for (const e of entries) {
+    if (e.entry_date !== dayKey) continue;
+    total += getEntryDurationHours(e.start_time, e.end_time);
+  }
+  return total;
+}
+
+function sumHoursInMonth(entries: readonly TimeEntryRow[], monthKey: string): number {
+  let total = 0;
+  for (const e of entries) {
+    if (e.entry_date.slice(0, 7) !== monthKey) continue;
+    total += getEntryDurationHours(e.start_time, e.end_time);
+  }
+  return total;
+}
+
+function formatMonthAxisLabel(monthKey: string, includeYear: boolean): string {
+  const [yRaw, mRaw] = monthKey.split("-");
+  const y = Number(yRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return monthKey;
+  const date = new Date(y, m - 1, 1, 12, 0, 0, 0);
+  return new Intl.DateTimeFormat("da-DK", {
+    month: "short",
+    ...(includeYear ? { year: "2-digit" } : {}),
+  }).format(date);
+}
+
+/** Buckets project time entries for the project detail bar chart (week = per day, month = one month, 3/12 mo = per calendar month in range). */
+export function buildProjectHoursChartSeries(
+  rangeEntries: readonly TimeEntryRow[],
+  summaryRange: ReportRange,
+  periodStart: Date,
+  periodEnd: Date
+): ProjectHoursChartPoint[] {
+  const start = new Date(periodStart);
+  start.setHours(12, 0, 0, 0);
+  const end = new Date(periodEnd);
+  end.setHours(12, 0, 0, 0);
+
+  if (summaryRange === "week") {
+    const dayKeys = dayKeysBetweenInclusive(start, end);
+    return dayKeys.map((dayKey) => {
+      const parts = dayKey.split("-").map(Number);
+      const y = parts[0];
+      const mo = parts[1];
+      const d = parts[2];
+      const date = new Date(y, mo - 1, d, 12, 0, 0, 0);
+      const axisLabel = new Intl.DateTimeFormat("da-DK", {
+        weekday: "short",
+        day: "numeric",
+      }).format(date);
+      const tooltipTitle = new Intl.DateTimeFormat("da-DK", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(date);
+      return {
+        key: dayKey,
+        axisLabel,
+        tooltipTitle,
+        hours: sumHoursOnDay(rangeEntries, dayKey),
+      };
+    });
+  }
+
+  if (summaryRange === "month") {
+    const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+    return [
+      {
+        key: monthKey,
+        axisLabel: formatMonthAxisLabel(monthKey, false),
+        tooltipTitle: formatMonthKey(monthKey),
+        hours: sumHoursInMonth(rangeEntries, monthKey),
+      },
+    ];
+  }
+
+  const monthKeys = monthKeysBetweenInclusive(start, end);
+  const includeYear =
+    monthKeys.length > 1 &&
+    monthKeys[0].slice(0, 4) !== monthKeys[monthKeys.length - 1].slice(0, 4);
+
+  return monthKeys.map((mk) => ({
+    key: mk,
+    axisLabel: formatMonthAxisLabel(mk, includeYear),
+    tooltipTitle: formatMonthKey(mk),
+    hours: sumHoursInMonth(rangeEntries, mk),
+  }));
 }
 
 export function getRecentWeekdays(count: number): Date[] {

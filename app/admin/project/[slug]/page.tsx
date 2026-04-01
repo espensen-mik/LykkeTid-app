@@ -2,21 +2,57 @@
 
 import {
   BarChart3,
+  ChartColumn,
   Clock3,
   Download,
   ListTree,
   Percent,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useAdminContext } from "../../admin-provider";
 import { AdminKpiCard } from "../../_components/admin-kpi";
 import { PeriodToggle } from "../../_components/period-toggle";
-import { formatHours, getInitials, getProjectColor, getProjectColorSoft } from "../../admin-utils";
+import {
+  buildProjectHoursChartSeries,
+  formatHours,
+  getInitials,
+  getProjectColor,
+  getProjectColorSoft,
+  type ProjectHoursChartPoint,
+} from "../../admin-utils";
+
+function HoursBarTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: ProjectHoursChartPoint }>;
+}) {
+  if (!active || !payload?.[0]?.payload) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="rounded-xl border border-black/[0.08] bg-white px-3 py-2 text-sm shadow-[0_8px_24px_-12px_rgba(15,42,29,0.2)]">
+      <span className="text-[#0F2A1D]/90">
+        {p.tooltipTitle} — {formatHours(p.hours)} t
+      </span>
+    </div>
+  );
+}
 
 export default function AdminProjectDetailPage() {
   const params = useParams();
@@ -27,7 +63,6 @@ export default function AdminProjectDetailPage() {
     projectDashboardRows,
     periodMeta,
     summaryPeriodLabel,
-    monthsToShow,
     exportProjectCsv,
     summaryRange,
     setSummaryRange,
@@ -38,6 +73,16 @@ export default function AdminProjectDetailPage() {
     () => projectDashboardRows.find((r) => r.projectSlug === slug),
     [projectDashboardRows, slug]
   );
+
+  const hoursChartData = useMemo(() => {
+    if (!row) return [];
+    return buildProjectHoursChartSeries(
+      row.rangeEntries,
+      summaryRange,
+      periodMeta.start,
+      periodMeta.end
+    );
+  }, [row, summaryRange, periodMeta.start, periodMeta.end]);
 
   const color = getProjectColor(slug, projectColorBySlug.get(slug));
   const subcategoryTotal = row?.bySubcategory.reduce((sum, sub) => sum + sub.hours, 0) ?? 0;
@@ -170,34 +215,50 @@ export default function AdminProjectDetailPage() {
 
         <section className="rounded-2xl bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.1)] ring-1 ring-black/[0.04]">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-[#0F2A1D]/60" />
-            <h2 className="text-lg font-medium text-[#0F2A1D]">Tidsudvikling</h2>
+            <ChartColumn className="h-5 w-5 text-[#0F2A1D]/60" />
+            <h2 className="text-lg font-medium text-[#0F2A1D]">Timer pr. måned</h2>
           </div>
-          <div className="mt-4 space-y-3">
-            {row.byMonth.length === 0 ? (
-              <p className="text-sm text-[#0F2A1D]/55">Ingen historik endnu.</p>
+          <p className="mt-1 text-sm text-[#0F2A1D]/50">Registrerede timer over tid</p>
+          <div className="mt-4 h-[280px] w-full min-w-0">
+            {hoursChartData.length === 0 ? (
+              <p className="text-sm text-[#0F2A1D]/55">Ingen data for den valgte periode.</p>
             ) : (
-              row.byMonth.slice(0, monthsToShow).map((month) => {
-                const maxMonth = row.byMonth[0]?.hours ?? 0;
-                const widthPct = maxMonth > 0 ? (month.hours / maxMonth) * 100 : 0;
-                return (
-                  <div key={month.monthKey}>
-                    <div className="mb-1 flex items-center justify-between text-[13px]">
-                      <span className="capitalize text-[#0F2A1D]/85">{month.label}</span>
-                      <span className="font-medium text-[#0F2A1D]/70">{formatHours(month.hours)} t</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[#F8FAF9] ring-1 ring-black/[0.05]">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.max(3, widthPct)}%`,
-                          backgroundColor: color,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={hoursChartData} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="rgba(15,42,29,0.08)"
+                  />
+                  <XAxis
+                    dataKey="axisLabel"
+                    tick={{ fontSize: 11, fill: "rgba(15,42,29,0.55)" }}
+                    axisLine={{ stroke: "rgba(15,42,29,0.12)" }}
+                    tickLine={false}
+                    interval={0}
+                    angle={hoursChartData.length > 8 ? -35 : 0}
+                    textAnchor={hoursChartData.length > 8 ? "end" : "middle"}
+                    height={hoursChartData.length > 8 ? 52 : 28}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "rgba(15,42,29,0.55)" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={40}
+                    tickFormatter={(v) => formatHours(Number(v))}
+                  />
+                  <RechartsTooltip
+                    cursor={{ fill: "rgba(15,42,29,0.04)" }}
+                    content={<HoursBarTooltip />}
+                  />
+                  <Bar
+                    dataKey="hours"
+                    fill={color}
+                    radius={[8, 8, 0, 0]}
+                    maxBarSize={52}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </div>
         </section>
@@ -227,7 +288,7 @@ export default function AdminProjectDetailPage() {
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
+                  <RechartsTooltip
                     formatter={(value, _name, item) => {
                       const num = Number(value ?? 0);
                       const pct = Number(item?.payload?.pct ?? 0);
