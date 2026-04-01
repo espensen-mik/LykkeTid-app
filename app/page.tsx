@@ -130,6 +130,39 @@ function toDbTime(hour: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
 }
 
+function parseDbTimeToMinutes(dbTime: string): number {
+  const [hhRaw, mmRaw] = dbTime.split(":");
+  const hh = Number(hhRaw);
+  const mm = Number(mmRaw ?? "0");
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0;
+  return hh * 60 + mm;
+}
+
+function getEntryDurationHoursFromTimes(startTime: string, endTime: string): number {
+  const startMinutes = parseDbTimeToMinutes(startTime);
+  const endMinutes = parseDbTimeToMinutes(endTime);
+  return Math.max(0, endMinutes - startMinutes) / 60;
+}
+
+function formatHours(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(1);
+}
+
+function getRecentWeekdays(count: number): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  while (days.length < count) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      days.push(new Date(cursor));
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return days;
+}
+
 function toKnownLocation(value: string | null): DayEntry["location"] {
   if (value && (KNOWN_LOCATIONS as readonly string[]).includes(value)) {
     return value as DayEntry["location"];
@@ -202,6 +235,8 @@ export default function Home() {
     []
   );
   const [projectsError, setProjectsError] = useState<string>("");
+  const [profileEntries, setProfileEntries] = useState<TimeEntryRow[]>([]);
+  const [profileEntriesLoading, setProfileEntriesLoading] = useState(false);
 
   const [profileOpen, setProfileOpen] = useState(false);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -331,6 +366,33 @@ export default function Home() {
       isActive = false;
     };
   }, [session]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchProfileEntries = async () => {
+      if (!profileOpen || !userId) return;
+      setProfileEntriesLoading(true);
+
+      const { data } = await supabase
+        .from("time_entries")
+        .select(
+          "id, user_id, entry_date, start_time, end_time, project_id, subcategory, location, created_at, updated_at"
+        )
+        .eq("user_id", userId)
+        .order("entry_date", { ascending: false });
+
+      if (!isActive) return;
+      setProfileEntries((data ?? []) as TimeEntryRow[]);
+      setProfileEntriesLoading(false);
+    };
+
+    void fetchProfileEntries();
+
+    return () => {
+      isActive = false;
+    };
+  }, [profileOpen, userId]);
 
   async function fetchDayEntries(dayKey: string, forUserId: string) {
     const requestId = ++fetchRequestIdRef.current;
@@ -498,6 +560,56 @@ export default function Home() {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+  const projectNameBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of projectOptions) {
+      map.set(option.slug, option.label);
+    }
+    return map;
+  }, [projectOptions]);
+
+  const recentWeekdayStatus = useMemo(() => {
+    const dayTotals = new Map<string, number>();
+    for (const entry of profileEntries) {
+      const hours = getEntryDurationHoursFromTimes(entry.start_time, entry.end_time);
+      dayTotals.set(entry.entry_date, (dayTotals.get(entry.entry_date) ?? 0) + hours);
+    }
+    const weekdays = getRecentWeekdays(5);
+    return weekdays.reverse().map((d) => {
+      const dayKey = toDayKey(d);
+      const hours = dayTotals.get(dayKey) ?? 0;
+      const weekday = new Intl.DateTimeFormat("da-DK", { weekday: "short" }).format(d);
+      const normalized = Math.min(1, hours / 7.5);
+      const barColor =
+        hours <= 3 ? "bg-rose-500" : hours <= 5 ? "bg-amber-400" : "bg-accent";
+      return { dayKey, weekday, hours, normalized, barColor };
+    });
+  }, [profileEntries]);
+
+  const topProjectsLastMonth = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 30);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const totals = new Map<string, number>();
+    for (const entry of profileEntries) {
+      const entryDate = fromDayKey(entry.entry_date);
+      if (entryDate < start || entryDate > end) continue;
+      const hours = getEntryDurationHoursFromTimes(entry.start_time, entry.end_time);
+      totals.set(entry.project_id, (totals.get(entry.project_id) ?? 0) + hours);
+    }
+
+    return Array.from(totals.entries())
+      .map(([slug, hours]) => ({
+        slug,
+        name: projectNameBySlug.get(slug) ?? slug,
+        hours,
+      }))
+      .sort((a, b) => b.hours - a.hours)
+      .slice(0, 3);
+  }, [profileEntries, projectNameBySlug]);
 
   if (authLoading) {
     return (
@@ -729,19 +841,27 @@ export default function Home() {
             aria-label="Luk profil"
             onClick={() => setProfileOpen(false)}
           />
-          <div className="relative w-full rounded-t-[1.5rem] bg-white/95 px-4 pb-6 pt-4 ring-1 ring-forest-deep/[0.05] sm:px-6">
+          <div className="relative w-full rounded-t-[1.75rem] bg-white/82 px-4 pb-6 pt-4 shadow-[0_-24px_70px_-42px_rgba(15,42,29,0.45)] ring-1 ring-forest-deep/[0.05] backdrop-blur-md sm:px-6">
             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line-soft/70" />
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-forest">Profil</div>
-                <div className="mt-1 text-[12px] font-medium text-evergreen/65">
-                  {displayName}
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-[20px] font-semibold text-white ring-2 ring-white/80">
+                  {avatarUrl ? (
+                    <div
+                      className="h-full w-full bg-cover bg-center"
+                      style={{ backgroundImage: `url("${avatarUrl}")` }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span>{initials || "?"}</span>
+                  )}
                 </div>
-                <div className="mt-0.5 text-[12px] text-evergreen/60">
-                  {displayTitle}
-                </div>
-                <div className="mt-1 text-[11px] text-evergreen/50">
-                  {session?.user?.email}
+                <div>
+                  <div className="text-[18px] font-semibold text-forest">{displayName}</div>
+                  <div className="mt-0.5 text-[13px] text-evergreen/75">{displayTitle}</div>
+                  <div className="mt-0.5 text-[12px] text-evergreen/58">
+                    {session?.user?.email}
+                  </div>
                 </div>
               </div>
               <button
@@ -753,11 +873,65 @@ export default function Home() {
                 <span className="text-[18px] leading-none">×</span>
               </button>
             </div>
+            <div className="mt-4 rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm">
+              <div className="text-[14px] font-semibold text-forest">Din status</div>
+              <div className="mt-0.5 text-[11px] text-evergreen/62">
+                Så god har du været til at timeregistrere den seneste uge
+              </div>
+              <div className="mt-3 space-y-2.5">
+                {recentWeekdayStatus.map((item) => (
+                  <div key={item.dayKey}>
+                    <div className="mb-1 flex items-center justify-between text-[12px]">
+                      <span className="font-medium capitalize text-forest/85">
+                        {item.weekday.replace(".", "")}
+                      </span>
+                      <span className="font-semibold text-evergreen">
+                        {formatHours(item.hours)} t
+                      </span>
+                    </div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-mint/55">
+                      <div
+                        className={`h-full rounded-full ${item.barColor}`}
+                        style={{ width: `${Math.max(3, item.normalized * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm">
+              <div className="text-[14px] font-semibold text-forest">
+                Den seneste måned har du registreret flest timer på
+              </div>
+              {profileEntriesLoading ? (
+                <div className="mt-3 text-[12px] text-evergreen/60">Henter...</div>
+              ) : topProjectsLastMonth.length === 0 ? (
+                <div className="mt-3 text-[12px] text-evergreen/60">
+                  Ingen registreringer endnu.
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {topProjectsLastMonth.map((project) => (
+                    <div
+                      key={project.slug}
+                      className="flex items-center justify-between rounded-xl bg-white/65 px-2.5 py-2"
+                    >
+                      <div className="text-[12px] font-medium text-forest/85">
+                        {project.name}
+                      </div>
+                      <div className="text-[12px] font-semibold text-evergreen">
+                        {formatHours(project.hours)} t
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="mt-4">
               <button
                 type="button"
                 onClick={signOut}
-                className="w-full rounded-xl border border-line-soft/75 bg-white px-3 py-2 text-[14px] font-semibold text-forest transition-colors hover:bg-pastel/25"
+                className="w-full rounded-xl border border-line-soft/75 bg-white/85 px-3 py-2 text-[14px] font-semibold text-forest transition-colors hover:bg-pastel/25"
               >
                 Log ud
               </button>
