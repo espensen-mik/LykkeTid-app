@@ -24,6 +24,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  type ValueType,
+  type NameType,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -203,6 +205,11 @@ function getRegistrationBarColor(value: number): string {
   if (value < 50) return "#D62839";
   if (value < 80) return "#f59e0b";
   return "#0F2A1D";
+}
+
+function formatTooltipPercent(value: ValueType, _name: NameType): string {
+  const numeric = Number(value ?? 0);
+  return `${Number.isFinite(numeric) ? Math.round(numeric) : 0}%`;
 }
 
 function getProjectColor(projectSlug: string): string {
@@ -1235,7 +1242,7 @@ export default function AdminPage() {
                   />
                   <Tooltip
                     cursor={{ fill: "rgba(76, 167, 113, 0.08)" }}
-                    formatter={(value: number) => `${Number(value).toFixed(0)}%`}
+                    formatter={formatTooltipPercent}
                     labelFormatter={(_, payload) => {
                       const data = payload?.[0]?.payload as
                         | {
