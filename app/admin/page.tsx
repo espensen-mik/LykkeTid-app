@@ -675,12 +675,13 @@ export default function AdminPage() {
     let registrationRatePct: number | null = null;
     let registrationRateHelper = "Ikke relevant for hele perioden";
 
-    if (summaryRange === "weekly") {
-      const expectedHoursPerEmployee = 7.5 * 5;
+    if (summaryRange === "weekly" && periodMeta.start && periodMeta.end) {
+      const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
+      const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
       const expectedTotal = activeEmployees * expectedHoursPerEmployee;
       registrationRatePct =
         expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
-      registrationRateHelper = "Baseret på 7,5 t × 5 hverdage";
+      registrationRateHelper = "Baseret på arbejdsdage indtil i dag";
     } else if (summaryRange === "monthly" && periodMeta.start && periodMeta.end) {
       const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
       const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
