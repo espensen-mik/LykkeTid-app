@@ -3,7 +3,17 @@
 import { LoginScreen } from "@/app/components/login-screen";
 import { supabase } from "@/lib/supabaseClient";
 import type { Session } from "@supabase/supabase-js";
-import { Clock3 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  Download,
+  ListTree,
+  Percent,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -174,6 +184,43 @@ function getInitials(name: string): string {
     .join("");
 }
 
+function KpiCard({
+  label,
+  value,
+  helper,
+  compact = false,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+  compact?: boolean;
+  icon?: LucideIcon;
+}) {
+  return (
+    <article
+      className={[
+        "rounded-2xl border border-line-soft/60 bg-white/85 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]",
+        compact ? "p-3" : "p-4",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-evergreen/60">
+        {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+        <span>{label}</span>
+      </div>
+      <div
+        className={[
+          "mt-1 font-bold leading-none text-forest",
+          compact ? "text-[20px]" : "text-[28px]",
+        ].join(" ")}
+      >
+        {value}
+      </div>
+      {helper ? <div className="mt-1 text-[11px] text-evergreen/62">{helper}</div> : null}
+    </article>
+  );
+}
+
 export default function AdminPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -191,7 +238,7 @@ export default function AdminPage() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
   const [activeTab, setActiveTab] = useState<AdminTab>("time-usage");
-  const [reportRange, setReportRange] = useState<ReportRange>("monthly");
+  const [summaryRange, setSummaryRange] = useState<ReportRange>("monthly");
   const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(null);
 
   useEffect(() => {
@@ -384,12 +431,14 @@ export default function AdminPage() {
     return map;
   }, [subcategories]);
 
-  const filteredTimeEntries = useMemo(() => {
-    if (reportRange === "all") return timeEntries;
+  const summaryFilteredEntries = useMemo(() => {
+    if (summaryRange === "all") return timeEntries;
     const start =
-      reportRange === "weekly" ? getStartOfCurrentWeekMonday() : getStartOfCurrentMonth();
+      summaryRange === "weekly" ? getStartOfCurrentWeekMonday() : getStartOfCurrentMonth();
     return timeEntries.filter((entry) => parseDayKeyToDate(entry.entry_date) >= start);
-  }, [reportRange, timeEntries]);
+  }, [summaryRange, timeEntries]);
+
+  const filteredTimeEntries = summaryFilteredEntries;
 
   const timeUsageByProject = useMemo(() => {
     const usageMap = new Map<string, { projectName: string; totalHours: number }>();
@@ -517,8 +566,36 @@ export default function AdminPage() {
       .sort((a, b) => b.periodHours - a.periodHours);
   }, [avatarByUserId, filteredTimeEntries, profileNameById, projects, timeEntries, timeUsageByProject]);
 
-  const reportPeriodLabel =
-    reportRange === "weekly" ? "denne uge" : reportRange === "monthly" ? "denne måned" : "al tid";
+  const summaryPeriodLabel =
+    summaryRange === "weekly"
+      ? "denne uge"
+      : summaryRange === "monthly"
+      ? "denne måned"
+      : "altid";
+
+  const summaryKpis = useMemo(() => {
+    let totalHours = 0;
+    const userIds = new Set<string>();
+    const projectIds = new Set<string>();
+
+    for (const entry of summaryFilteredEntries) {
+      totalHours += getEntryDurationHours(entry.start_time, entry.end_time);
+      userIds.add(entry.user_id);
+      projectIds.add(entry.project_id);
+    }
+
+    const activeEmployees = userIds.size;
+    const activeProjects = projectIds.size;
+    const avgHoursPerEmployee =
+      activeEmployees > 0 ? totalHours / activeEmployees : 0;
+
+    return {
+      totalHours,
+      activeEmployees,
+      activeProjects,
+      avgHoursPerEmployee,
+    };
+  }, [summaryFilteredEntries]);
 
   const exportProjectCsv = (projectSlug: string) => {
     const target = projectDashboardRows.find((row) => row.projectSlug === projectSlug);
@@ -564,7 +641,7 @@ export default function AdminPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `lykketid-${projectSlug}-${reportRange}.csv`;
+    a.download = `lykketid-${projectSlug}-${summaryRange}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -786,15 +863,15 @@ export default function AdminPage() {
                 {([
                   ["weekly", "Uge"],
                   ["monthly", "Måned"],
-                  ["all", "Alt"],
+                  ["all", "Altid"],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setReportRange(value)}
+                    onClick={() => setSummaryRange(value)}
                     className={[
                       "rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition",
-                      reportRange === value
+                      summaryRange === value
                         ? "border-accent/50 bg-accent/10 text-forest"
                         : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
                     ].join(" ")}
@@ -806,10 +883,57 @@ export default function AdminPage() {
             </div>
           </section>
 
+          <section className="grid gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Timer i perioden"
+              value={formatHours(summaryKpis.totalHours)}
+              helper={`For ${summaryPeriodLabel}`}
+              icon={Clock3}
+            />
+            <KpiCard
+              label="Aktive medarbejdere"
+              value={String(summaryKpis.activeEmployees)}
+              helper="Unikke brugere med registreringer"
+              icon={Users}
+            />
+            <KpiCard
+              label="Aktive projekter"
+              value={String(summaryKpis.activeProjects)}
+              helper="Unikke projekter med registreringer"
+              icon={ListTree}
+            />
+            <KpiCard
+              label="Gns. timer pr. medarbejder"
+              value={formatHours(summaryKpis.avgHoursPerEmployee)}
+              helper="Baseret på aktive medarbejdere"
+              icon={TrendingUp}
+            />
+          </section>
+
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
             <h2 className="text-[16px] font-semibold text-forest">Fordeling af tid pr. projekt</h2>
             {(() => {
-              const rows = projectDashboardRows.filter((row) => row.periodHours > 0);
+              const usageMap = new Map<string, number>();
+              for (const project of projects.filter((p) => p.is_active)) {
+                usageMap.set(project.slug, 0);
+              }
+              for (const entry of summaryFilteredEntries) {
+                const prev = usageMap.get(entry.project_id);
+                if (prev === undefined) continue;
+                usageMap.set(
+                  entry.project_id,
+                  prev + getEntryDurationHours(entry.start_time, entry.end_time)
+                );
+              }
+              const rows = projects
+                .filter((p) => p.is_active)
+                .map((project) => ({
+                  projectSlug: project.slug,
+                  projectName: project.name,
+                  periodHours: usageMap.get(project.slug) ?? 0,
+                }))
+                .filter((row) => row.periodHours > 0)
+                .sort((a, b) => b.periodHours - a.periodHours);
               const total = rows.reduce((sum, row) => sum + row.periodHours, 0);
               const segments = buildPieSegments(
                 rows.map((row) => ({ projectName: row.projectName, totalHours: row.periodHours }))
@@ -828,7 +952,7 @@ export default function AdminPage() {
                 <div className="mt-3 grid gap-4 lg:grid-cols-[18rem_1fr]">
                   <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
                     <div className="text-[12px] font-semibold text-evergreen/75">
-                      {reportRange === "weekly" ? "Denne uge" : reportRange === "monthly" ? "Denne måned" : "Al tid"}
+                      {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}
                     </div>
                     <div className="mt-2 flex items-center justify-center">
                       <div
@@ -846,18 +970,10 @@ export default function AdminPage() {
                       rows.map((row, index) => {
                         const color = getProjectColor(row.projectSlug);
                         const pct = total > 0 ? (row.periodHours / total) * 100 : 0;
-                        const isSelected = selectedProjectSlug === row.projectSlug;
                         return (
-                          <button
+                          <div
                             key={row.projectSlug}
-                            type="button"
-                            onClick={() => setSelectedProjectSlug(row.projectSlug)}
-                            className={[
-                              "flex w-full items-center justify-between rounded-lg border px-2.5 py-1.5 text-left text-[12px] transition",
-                              isSelected
-                                ? "border-accent/45 bg-accent/10"
-                                : "border-line-soft/25 bg-white/60 hover:bg-pastel/20",
-                            ].join(" ")}
+                            className="flex w-full items-center justify-between rounded-lg border border-line-soft/25 bg-white/60 px-2.5 py-1.5 text-left text-[12px]"
                           >
                             <div className="flex items-center gap-2">
                               <span
@@ -873,7 +989,7 @@ export default function AdminPage() {
                             <span className="text-evergreen/70">
                               {formatHours(row.periodHours)} t ({pct.toFixed(0)}%)
                             </span>
-                          </button>
+                          </div>
                         );
                       })
                     )}
@@ -888,13 +1004,13 @@ export default function AdminPage() {
             <div className="mt-3 space-y-2">
               {projectDashboardRows.map((row) => {
                 const isOpen = selectedProjectSlug === row.projectSlug;
-                const shareWidth = `${Math.max(3, row.sharePct)}%`;
+                const shareWidth = `${Math.max(4, row.sharePct)}%`;
                 const color = getProjectColor(row.projectSlug);
                 const avatarUsers = row.userIds.slice(0, 5);
                 return (
                   <article
                     key={row.projectSlug}
-                    className="rounded-xl border border-line-soft/40 bg-white/70"
+                    className="overflow-hidden rounded-xl border border-line-soft/40 bg-white/72"
                   >
                     <button
                       type="button"
@@ -903,7 +1019,7 @@ export default function AdminPage() {
                           current === row.projectSlug ? null : row.projectSlug
                         )
                       }
-                      className="w-full px-3 py-3 text-left"
+                      className="w-full px-3 py-2.5 text-left"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -913,11 +1029,11 @@ export default function AdminPage() {
                               style={{ backgroundColor: color }}
                               aria-hidden="true"
                             />
-                            <span className="truncate text-[14px] font-semibold text-forest">
+                            <span className="truncate text-[13px] font-semibold text-forest">
                               {row.projectName}
                             </span>
                           </div>
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-mint/55">
+                          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
                             <div
                               className="h-full rounded-full"
                               style={{ width: shareWidth, backgroundColor: color }}
@@ -925,15 +1041,17 @@ export default function AdminPage() {
                           </div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-[13px] font-semibold text-evergreen">
-                            {formatHours(row.periodHours)} t
+                          <div className="flex items-center justify-end gap-1 text-[13px] font-semibold text-evergreen">
+                            <Clock3 className="h-3.5 w-3.5 text-evergreen/65" aria-hidden="true" />
+                            <span>{formatHours(row.periodHours)} t</span>
                           </div>
-                          <div className="text-[11px] text-evergreen/65">
-                            {row.userIds.length} medarbejdere
+                          <div className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-evergreen/65">
+                            <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{row.userIds.length} medarbejdere</span>
                           </div>
                         </div>
                       </div>
-                      <div className="mt-2 flex items-center justify-between">
+                      <div className="mt-1.5 flex items-center justify-between">
                         <div className="flex items-center">
                           {avatarUsers.map((userId, index) => {
                             const name = profileNameById.get(userId) ?? "Ukendt bruger";
@@ -961,23 +1079,62 @@ export default function AdminPage() {
                             );
                           })}
                         </div>
-                        <span className="text-[11px] font-medium text-evergreen/70">
-                          {row.sharePct.toFixed(0)}% af {reportPeriodLabel}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-evergreen/70">
+                            <Percent className="h-3.5 w-3.5" aria-hidden="true" />
+                            {row.sharePct.toFixed(0)}% af {summaryPeriodLabel}
+                          </span>
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line-soft/60 bg-white/80 text-evergreen/70">
+                            {isOpen ? (
+                              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                            )}
+                          </span>
+                        </div>
                       </div>
                     </button>
 
                     {isOpen ? (
-                      <div className="border-t border-line-soft/35 px-3 pb-3 pt-3">
+                      <div className="border-t border-line-soft/35 bg-white/55 px-3 pb-3 pt-3">
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          <KpiCard
+                            label="Timer i perioden"
+                            value={formatHours(row.periodHours)}
+                            helper={`For ${summaryPeriodLabel}`}
+                            compact
+                            icon={Clock3}
+                          />
+                          <KpiCard
+                            label="Timer i alt"
+                            value={formatHours(row.totalHoursOverall)}
+                            compact
+                            icon={Clock3}
+                          />
+                          <KpiCard
+                            label="Medarbejdere"
+                            value={String(row.userIds.length)}
+                            compact
+                            icon={Users}
+                          />
+                          <KpiCard
+                            label="Andel af perioden"
+                            value={`${row.sharePct.toFixed(0)}%`}
+                            compact
+                            icon={Percent}
+                          />
+                        </div>
+
                         <div className="grid gap-3 lg:grid-cols-2">
                           <section className="rounded-lg border border-line-soft/30 bg-white/75 p-3">
-                            <div className="text-[12px] font-semibold text-forest">
-                              Fordeling på brugere
+                            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-forest">
+                              <Users className="h-4 w-4 text-evergreen/70" aria-hidden="true" />
+                              <span>Fordeling på brugere</span>
                             </div>
                             <div className="mt-2 space-y-1.5">
                               {row.byUser.length === 0 ? (
                                 <div className="text-[12px] text-evergreen/65">
-                                  Ingen registreringer i {reportPeriodLabel}.
+                                  Ingen registreringer endnu.
                                 </div>
                               ) : (
                                 row.byUser.map((user) => (
@@ -1011,8 +1168,9 @@ export default function AdminPage() {
                           </section>
 
                           <section className="rounded-lg border border-line-soft/30 bg-white/75 p-3">
-                            <div className="text-[12px] font-semibold text-forest">
-                              Udvikling pr. måned
+                            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-forest">
+                              <TrendingUp className="h-4 w-4 text-evergreen/70" aria-hidden="true" />
+                              <span>Udvikling pr. måned</span>
                             </div>
                             <div className="mt-2 space-y-1.5">
                               {row.byMonth.length === 0 ? (
@@ -1053,8 +1211,9 @@ export default function AdminPage() {
 
                         {row.bySubcategory.length > 0 ? (
                           <section className="mt-3 rounded-lg border border-line-soft/30 bg-white/75 p-3">
-                            <div className="text-[12px] font-semibold text-forest">
-                              Fordeling på underpunkter
+                            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-forest">
+                              <ListTree className="h-4 w-4 text-evergreen/70" aria-hidden="true" />
+                              <span>Fordeling på underpunkter</span>
                             </div>
                             <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                               {row.bySubcategory.map((sub) => (
@@ -1072,18 +1231,29 @@ export default function AdminPage() {
                           </section>
                         ) : null}
 
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft/30 pt-3">
                           <div className="text-[12px] text-evergreen/70">
-                            {reportPeriodLabel}: {formatHours(row.periodHours)} t · samlet:{" "}
+                            {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}: {formatHours(row.periodHours)} t · samlet:{" "}
                             {formatHours(row.totalHoursOverall)} t
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => exportProjectCsv(row.projectSlug)}
-                            className="rounded-lg border border-line-soft/60 bg-white px-3 py-1.5 text-[12px] font-semibold text-forest transition hover:bg-pastel/20"
-                          >
-                            Download CSV
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => exportProjectCsv(row.projectSlug)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-line-soft/60 bg-white px-3 py-1.5 text-[12px] font-semibold text-forest transition hover:bg-pastel/20"
+                            >
+                              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                              Download CSV
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProjectSlug(null)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-line-soft/60 bg-white px-3 py-1.5 text-[12px] font-semibold text-evergreen/80 transition hover:bg-pastel/20"
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                              Skjul detaljer
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : null}
