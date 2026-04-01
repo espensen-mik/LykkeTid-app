@@ -120,6 +120,11 @@ function getStartOfCurrentMonth(): Date {
   return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 }
 
+function getEndOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+}
+
 function formatMonthKey(monthKey: string): string {
   const [yearRaw, monthRaw] = monthKey.split("-");
   const year = Number(yearRaw);
@@ -237,6 +242,13 @@ export default function AdminPage() {
   const [projectSortOrder, setProjectSortOrder] = useState("0");
   const [creatingProject, setCreatingProject] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
+  const [openSubcategoryProjectId, setOpenSubcategoryProjectId] = useState<string | null>(
+    null
+  );
+  const [newSubcategoryName, setNewSubcategoryName] = useState("");
+  const [newSubcategorySortOrder, setNewSubcategorySortOrder] = useState("0");
+  const [subcategoryError, setSubcategoryError] = useState("");
+  const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>("time-usage");
   const [summaryRange, setSummaryRange] = useState<ReportRange>("monthly");
   const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(null);
@@ -421,6 +433,45 @@ export default function AdminPage() {
     setCreatingProject(false);
   };
 
+  const openSubcategoryForm = (projectId: string) => {
+    setOpenSubcategoryProjectId(projectId);
+    setNewSubcategoryName("");
+    setNewSubcategorySortOrder("0");
+    setSubcategoryError("");
+  };
+
+  const closeSubcategoryForm = () => {
+    setOpenSubcategoryProjectId(null);
+    setNewSubcategoryName("");
+    setNewSubcategorySortOrder("0");
+    setSubcategoryError("");
+  };
+
+  const handleCreateSubcategory = async (projectId: string) => {
+    if (!newSubcategoryName.trim()) return;
+    setIsSavingSubcategory(true);
+    setSubcategoryError("");
+
+    const sortOrderValue = Number(newSubcategorySortOrder);
+    const { error } = await supabase.from("project_subcategories").insert({
+      project_id: projectId,
+      name: newSubcategoryName.trim(),
+      sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+      is_active: true,
+    });
+
+    if (error) {
+      console.error("Kunne ikke oprette underpunkt", error);
+      setSubcategoryError("Kunne ikke oprette underpunkt");
+      setIsSavingSubcategory(false);
+      return;
+    }
+
+    await Promise.all([fetchProjects(), fetchSubcategories()]);
+    setIsSavingSubcategory(false);
+    closeSubcategoryForm();
+  };
+
   const subcategoriesByProjectId = useMemo(() => {
     const map = new Map<string, SubcategoryRow[]>();
     for (const sub of subcategories) {
@@ -431,12 +482,38 @@ export default function AdminPage() {
     return map;
   }, [subcategories]);
 
+  const periodMeta = useMemo(() => {
+    if (summaryRange === "weekly") {
+      return {
+        label: "denne uge",
+        helper: "Mandag til i dag",
+        start: getStartOfCurrentWeekMonday(),
+        end: getEndOfToday(),
+      };
+    }
+    if (summaryRange === "monthly") {
+      return {
+        label: "denne måned",
+        helper: "1. i måneden til i dag",
+        start: getStartOfCurrentMonth(),
+        end: getEndOfToday(),
+      };
+    }
+    return {
+      label: "alt",
+      helper: "Alle registreringer",
+      start: null as Date | null,
+      end: null as Date | null,
+    };
+  }, [summaryRange]);
+
   const summaryFilteredEntries = useMemo(() => {
-    if (summaryRange === "all") return timeEntries;
-    const start =
-      summaryRange === "weekly" ? getStartOfCurrentWeekMonday() : getStartOfCurrentMonth();
-    return timeEntries.filter((entry) => parseDayKeyToDate(entry.entry_date) >= start);
-  }, [summaryRange, timeEntries]);
+    if (!periodMeta.start || !periodMeta.end) return timeEntries;
+    return timeEntries.filter((entry) => {
+      const date = parseDayKeyToDate(entry.entry_date);
+      return date >= periodMeta.start! && date <= periodMeta.end!;
+    });
+  }, [periodMeta, timeEntries]);
 
   const filteredTimeEntries = summaryFilteredEntries;
 
@@ -566,12 +643,7 @@ export default function AdminPage() {
       .sort((a, b) => b.periodHours - a.periodHours);
   }, [avatarByUserId, filteredTimeEntries, profileNameById, projects, timeEntries, timeUsageByProject]);
 
-  const summaryPeriodLabel =
-    summaryRange === "weekly"
-      ? "denne uge"
-      : summaryRange === "monthly"
-      ? "denne måned"
-      : "altid";
+  const summaryPeriodLabel = periodMeta.label;
 
   const summaryKpis = useMemo(() => {
     let totalHours = 0;
@@ -861,9 +933,9 @@ export default function AdminPage() {
               <h2 className="text-[16px] font-semibold text-forest">Rapportperiode</h2>
               <div className="flex items-center gap-2">
                 {([
-                  ["weekly", "Uge"],
-                  ["monthly", "Måned"],
-                  ["all", "Altid"],
+                  ["weekly", "Denne uge"],
+                  ["monthly", "Denne måned"],
+                  ["all", "Alt"],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -887,7 +959,7 @@ export default function AdminPage() {
             <KpiCard
               label="Timer i perioden"
               value={formatHours(summaryKpis.totalHours)}
-              helper={`For ${summaryPeriodLabel}`}
+              helper={periodMeta.helper}
               icon={Clock3}
             />
             <KpiCard
@@ -1001,6 +1073,7 @@ export default function AdminPage() {
 
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
             <h2 className="text-[16px] font-semibold text-forest">Projektoversigt</h2>
+            <p className="mt-1 text-[12px] text-evergreen/65">Timer og andel i valgt periode</p>
             <div className="mt-3 space-y-2">
               {projectDashboardRows.map((row) => {
                 const isOpen = selectedProjectSlug === row.projectSlug;
@@ -1033,7 +1106,14 @@ export default function AdminPage() {
                               {row.projectName}
                             </span>
                           </div>
-                          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
+                          <div className="mt-1.5 flex items-center justify-between text-[11px] text-evergreen/70">
+                            <span className="inline-flex items-center gap-1">
+                              <Percent className="h-3.5 w-3.5" aria-hidden="true" />
+                              Andel af periode
+                            </span>
+                            <span className="font-semibold">{row.sharePct.toFixed(0)}%</span>
+                          </div>
+                          <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
                             <div
                               className="h-full rounded-full"
                               style={{ width: shareWidth, backgroundColor: color }}
@@ -1079,19 +1159,13 @@ export default function AdminPage() {
                             );
                           })}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-evergreen/70">
-                            <Percent className="h-3.5 w-3.5" aria-hidden="true" />
-                            {row.sharePct.toFixed(0)}% af {summaryPeriodLabel}
-                          </span>
-                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line-soft/60 bg-white/80 text-evergreen/70">
-                            {isOpen ? (
-                              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-                            ) : (
-                              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                            )}
-                          </span>
-                        </div>
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line-soft/60 bg-white/80 text-evergreen/70">
+                          {isOpen ? (
+                            <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                        </span>
                       </div>
                     </button>
 
@@ -1101,7 +1175,7 @@ export default function AdminPage() {
                           <KpiCard
                             label="Timer i perioden"
                             value={formatHours(row.periodHours)}
-                            helper={`For ${summaryPeriodLabel}`}
+                            helper={periodMeta.helper}
                             compact
                             icon={Clock3}
                           />
@@ -1430,11 +1504,63 @@ export default function AdminPage() {
                   </div>
                   <button
                     type="button"
+                    onClick={() => openSubcategoryForm(project.id)}
                     className="rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[12px] font-semibold text-forest hover:bg-pastel/20"
                   >
                     Tilføj underpunkt
                   </button>
                 </div>
+
+                {openSubcategoryProjectId === project.id ? (
+                  <div className="mt-3 rounded-xl border border-line-soft/45 bg-white/75 p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block">
+                        <div className="mb-1 text-[12px] font-semibold text-forest/85">Navn</div>
+                        <input
+                          type="text"
+                          value={newSubcategoryName}
+                          onChange={(e) => setNewSubcategoryName(e.target.value)}
+                          placeholder="Nyt underpunkt"
+                          className="w-full rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[13px] text-forest outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="mb-1 text-[12px] font-semibold text-forest/85">
+                          Sortering
+                        </div>
+                        <input
+                          type="number"
+                          value={newSubcategorySortOrder}
+                          onChange={(e) => setNewSubcategorySortOrder(e.target.value)}
+                          className="w-full rounded-lg border border-line-soft/70 bg-white px-3 py-2 text-[13px] text-forest outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </label>
+                    </div>
+                    {subcategoryError ? (
+                      <div className="mt-2 text-[12px] font-medium text-rose-700">
+                        {subcategoryError}
+                      </div>
+                    ) : null}
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateSubcategory(project.id)}
+                        disabled={isSavingSubcategory || !newSubcategoryName.trim()}
+                        className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60"
+                      >
+                        {isSavingSubcategory ? "Gemmer..." : "Gem"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeSubcategoryForm}
+                        disabled={isSavingSubcategory}
+                        className="rounded-lg border border-line-soft/70 bg-white px-3 py-1.5 text-[12px] font-semibold text-evergreen/80 hover:bg-pastel/20 disabled:opacity-60"
+                      >
+                        Annuller
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="mt-4 border-t border-line-soft/35 pt-3">
                   <div className="text-[12px] font-semibold uppercase tracking-wide text-evergreen/60">
