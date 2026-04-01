@@ -75,8 +75,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const adminAvatarUrl = profile.avatar_url?.trim() || null;
   const adminInitials = getInitials(adminDisplayName);
 
-  const navMain = [
+  const navTop = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/admin" },
+  ];
+  const navBottom = [
     { href: "/admin/users", label: "Brugere", icon: Users, match: (p: string) => p === "/admin/users" },
     {
       href: "/admin/settings/projects",
@@ -116,7 +118,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             Menu
           </p>
           <ul className="space-y-1">
-            {navMain.map((item) => {
+            {navTop.map((item) => {
               const active = item.match(pathname);
               return (
                 <li key={item.href}>
@@ -168,6 +170,30 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               })
             )}
           </ul>
+
+          <div className="mt-6 border-t border-black/[0.06] pt-4">
+            <ul className="space-y-1">
+              {navBottom.map((item) => {
+                const active = item.match(pathname);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={[
+                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "border-l-[3px] border-[#0F2A1D] bg-[color-mix(in_srgb,#C0E6BA_22%,white)] pl-[9px] text-[#0F2A1D]"
+                          : "border-l-[3px] border-transparent pl-3 text-[#0F2A1D]/75 hover:bg-black/[0.03]",
+                      ].join(" ")}
+                    >
+                      <item.icon className="h-[18px] w-[18px] shrink-0 opacity-90" strokeWidth={2} />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
 
         </nav>
 

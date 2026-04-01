@@ -179,6 +179,13 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
   const [summaryRange, setSummaryRange] = useState<ReportRange>("3months");
 
+  const isMissingColorColumnError = (error: unknown): boolean => {
+    if (!error || typeof error !== "object") return false;
+    const maybe = error as { code?: string; message?: string; details?: string };
+    const msg = `${maybe.message ?? ""} ${maybe.details ?? ""}`.toLowerCase();
+    return maybe.code === "42703" || (msg.includes("color") && msg.includes("column"));
+  };
+
   useEffect(() => {
     let isActive = true;
 
@@ -248,6 +255,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
     if (withColor.error) {
       console.error("fetchProjects with color failed", withColor.error);
+      if (!isMissingColorColumnError(withColor.error)) {
+        return { error: withColor.error };
+      }
       const fallback = await supabase
         .from("projects")
         .select("id, name, slug, is_active, sort_order")
@@ -389,8 +399,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     });
     if (withColor.error) {
       console.error("createProject with color failed", withColor.error);
-      const fallback = await supabase.from("projects").insert(basePayload);
-      insertError = fallback.error;
+      if (isMissingColorColumnError(withColor.error)) {
+        const fallback = await supabase.from("projects").insert(basePayload);
+        insertError = fallback.error;
+      } else {
+        insertError = withColor.error;
+      }
     }
 
     if (insertError) {
@@ -473,12 +487,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
     if (withColor.error) {
       console.error("updateProject with color failed", withColor.error);
-      const fallback = await supabase
-        .from("projects")
-        .update(basePayload)
-        .eq("id", params.projectId);
-      if (fallback.error) {
-        console.error("updateProject fallback failed", fallback.error);
+      if (isMissingColorColumnError(withColor.error)) {
+        const fallback = await supabase
+          .from("projects")
+          .update(basePayload)
+          .eq("id", params.projectId);
+        if (fallback.error) {
+          console.error("updateProject fallback failed", fallback.error);
+          return false;
+        }
+      } else {
         return false;
       }
     }
