@@ -26,6 +26,7 @@ import {
   formatMonthKey,
   getEndOfToday,
   getEntryDurationHours,
+  getProjectColor,
   getRegistrationBarColor,
   getStartMonthsAgo,
   getStartOfCurrentMonth,
@@ -413,6 +414,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Keep color stable even if DB color column is unavailable/read-restricted.
+    getProjectColor(projectSlug.trim(), projectColor.trim() || null);
+
     setProjectName("");
     setProjectSlug("");
     setProjectSortOrder("0");
@@ -500,6 +504,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         return false;
       }
     }
+
+    // Keep color stable even if DB color column is unavailable/read-restricted.
+    getProjectColor(params.slug.trim(), params.color.trim() || null);
 
     await fetchProjects();
     return true;

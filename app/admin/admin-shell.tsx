@@ -9,7 +9,6 @@ import {
   BarChart3,
   Clock3,
   LayoutDashboard,
-  Search,
   Settings2,
   Users,
 } from "lucide-react";
@@ -209,20 +208,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex h-full min-h-0 flex-1 flex-col pl-[240px]">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-black/[0.06] bg-white/90 px-6 backdrop-blur-md">
-          <div className="relative max-w-md flex-1">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#0F2A1D]/35"
-              aria-hidden
-            />
-            <input
-              type="search"
-              placeholder="Søg i admin..."
-              className="w-full rounded-xl border border-black/[0.06] bg-[#F8FAF9] py-2.5 pl-10 pr-4 text-sm text-[#0F2A1D] placeholder:text-[#0F2A1D]/35 outline-none ring-[#0F2A1D]/15 focus:ring-2"
-              readOnly
-              aria-label="Søg (kommer snart)"
-            />
-          </div>
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-4 border-b border-black/[0.06] bg-white/90 px-6 backdrop-blur-md">
           <div className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-[#F8FAF9] px-3 py-2 shadow-sm">
             <span className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white ring-2 ring-white" style={{ backgroundColor: adminAvatarUrl ? undefined : "#C0E6BA", color: PRIMARY }}>
               {adminAvatarUrl ? (
