@@ -8,7 +8,6 @@ import {
   Activity,
   BarChart3,
   Clock3,
-  Folder,
   LayoutDashboard,
   Search,
   Users,
@@ -77,19 +76,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const navMain = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/admin" },
-    {
-      href: "/admin/projects",
-      label: "Projekter",
-      icon: Folder,
-      match: (p: string) => p.startsWith("/admin/project") || p === "/admin/projects",
-    },
     { href: "/admin/users", label: "Brugere", icon: Users, match: (p: string) => p === "/admin/users" },
   ];
 
   const activeProjects = projects.filter((p) => p.is_active);
 
   return (
-    <div className="flex min-h-screen" style={{ background: BG }}>
+    <div className="flex h-full min-h-0 overflow-hidden" style={{ background: BG }}>
       <aside
         className="fixed left-0 top-0 z-40 flex h-screen w-[240px] flex-col border-r border-black/[0.06] bg-white shadow-[4px_0_24px_-12px_rgba(15,42,29,0.08)]"
         aria-label="Admin navigation"
@@ -181,7 +174,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col pl-[240px]">
+      <div className="flex h-full min-h-0 flex-1 flex-col pl-[240px]">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-black/[0.06] bg-white/90 px-6 backdrop-blur-md">
           <div className="relative max-w-md flex-1">
             <Search
@@ -218,7 +211,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           {adminDataLoading ? (
             <div className="flex min-h-[40vh] items-center justify-center">
               <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#0F2A1D]/15 border-t-[#0F2A1D]" />

@@ -1,18 +1,12 @@
 "use client";
 
-import { Users } from "lucide-react";
 import Link from "next/link";
 import { useAdminContext } from "../admin-provider";
-import { formatHours, getInitials, getProjectColor, slugify } from "../admin-utils";
+import { slugify } from "../admin-utils";
 
 export default function AdminProjectsPage() {
   const {
     projects,
-    projectDashboardRows,
-    profileNameById,
-    avatarByUserId,
-    periodMeta,
-    summaryPeriodLabel,
     projectName,
     setProjectName,
     projectSlug,
@@ -38,100 +32,9 @@ export default function AdminProjectsPage() {
   return (
     <div className="mx-auto max-w-[1400px] space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#0F2A1D]">Projekter</h1>
-        <p className="mt-1 text-sm text-[#0F2A1D]/55">
-          Oversigt over timer og fordeling · {summaryPeriodLabel}
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-[#0F2A1D]">Projektopsaetning</h1>
+        <p className="mt-1 text-sm text-[#0F2A1D]/55">Opret projekter og administrer underpunkter</p>
       </div>
-
-      <section className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_24px_-8px_rgba(15,42,29,0.1)] ring-1 ring-black/[0.04]">
-        <div className="border-b border-black/[0.06] px-6 py-4">
-          <h2 className="text-lg font-medium text-[#0F2A1D]">Alle projekter</h2>
-          <p className="text-sm text-[#0F2A1D]/50">{periodMeta.helper}</p>
-        </div>
-        <ul className="divide-y divide-black/[0.06]">
-          {projectDashboardRows.length === 0 ? (
-            <li className="px-6 py-10 text-center text-sm text-[#0F2A1D]/55">Ingen projekter endnu.</li>
-          ) : (
-            projectDashboardRows.map((row) => {
-              const shareWidth = `${Math.max(4, row.sharePct)}%`;
-              const color = getProjectColor(row.projectSlug);
-              const avatarUsers = row.userIds.slice(0, 5);
-              return (
-                <li key={row.projectSlug}>
-                  <Link
-                    href={`/admin/project/${encodeURIComponent(row.projectSlug)}`}
-                    className="flex flex-col gap-4 px-6 py-5 transition hover:bg-[#F8FAF9] sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: color }}
-                        />
-                        <span className="truncate text-base font-semibold text-[#0F2A1D]">
-                          {row.projectName}
-                        </span>
-                      </div>
-                      <div className="mt-3 max-w-xl">
-                        <div className="mb-1 flex justify-between text-xs font-medium text-[#0F2A1D]/55">
-                          <span>Andel af periode</span>
-                          <span>{row.sharePct.toFixed(0)}%</span>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-[#F8FAF9] ring-1 ring-black/[0.05]">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: shareWidth, backgroundColor: color }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-6">
-                      <div className="text-right">
-                        <div className="text-2xl font-bold tabular-nums text-[#0F2A1D]">
-                          {formatHours(row.periodHours)}{" "}
-                          <span className="text-base font-semibold text-[#0F2A1D]/45">t</span>
-                        </div>
-                        <div className="mt-0.5 flex items-center justify-end gap-1 text-xs text-[#0F2A1D]/50">
-                          <Users className="h-3.5 w-3.5" />
-                          {row.userIds.length} medarbejdere
-                        </div>
-                      </div>
-                      <div className="flex -space-x-2">
-                        {avatarUsers.map((userId, index) => {
-                          const name = profileNameById.get(userId) ?? "Ukendt bruger";
-                          const avatarUrl = avatarByUserId.get(userId) ?? null;
-                          return (
-                            <span
-                              key={userId}
-                              className="relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-sm"
-                              style={{
-                                zIndex: avatarUsers.length - index,
-                                backgroundColor: avatarUrl ? undefined : "#C0E6BA",
-                                color: "#0F2A1D",
-                              }}
-                              title={name}
-                            >
-                              {avatarUrl ? (
-                                <span
-                                  className="h-full w-full bg-cover bg-center"
-                                  style={{ backgroundImage: `url("${avatarUrl}")` }}
-                                />
-                              ) : (
-                                getInitials(name)
-                              )}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      </section>
 
       <section className="rounded-2xl bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.08)] ring-1 ring-black/[0.04]">
         <h2 className="text-lg font-medium text-[#0F2A1D]">Opret projekt</h2>

@@ -14,9 +14,11 @@ import {
 } from "recharts";
 import { Clock3, Folder, ListTree, TrendingUp, Users } from "lucide-react";
 import { useMemo } from "react";
+import Link from "next/link";
 import { useAdminContext } from "../admin-provider";
 import { AdminKpiCard } from "./admin-kpi";
-import { formatHours, getEntryDurationHours, getProjectColor } from "../admin-utils";
+import { PeriodToggle } from "./period-toggle";
+import { formatHours, getEntryDurationHours, getInitials, getProjectColor } from "../admin-utils";
 
 export function AdminDashboard() {
   const {
@@ -28,6 +30,9 @@ export function AdminDashboard() {
     summaryFilteredEntries,
     registrationByDay,
     summaryPeriodLabel,
+    projectDashboardRows,
+    profileNameById,
+    avatarByUserId,
   } = useAdminContext();
 
   const pieRows = useMemo(() => {
@@ -76,39 +81,16 @@ export function AdminDashboard() {
       <section className="rounded-2xl bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.08)] ring-1 ring-black/[0.04]">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-lg font-medium text-[#0F2A1D]">Rapportperiode</h2>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["weekly", "Uge"],
-                ["monthly", "Måned"],
-                ["quarter", "3 mdr"],
-                ["year", "12 mdr"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setSummaryRange(value)}
-                className={[
-                  "rounded-xl px-4 py-2 text-sm font-semibold transition",
-                  summaryRange === value
-                    ? "bg-[#0F2A1D] text-white shadow-sm"
-                    : "bg-[#F8FAF9] text-[#0F2A1D]/80 ring-1 ring-black/[0.06] hover:bg-black/[0.04]",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <PeriodToggle value={summaryRange} onChange={setSummaryRange} />
         </div>
-        <p className="mt-2 text-sm text-[#0F2A1D]/50">{periodMeta.helper}</p>
+        <p className="mt-2 text-sm text-[#0F2A1D]/50">{periodMeta.label}</p>
       </section>
 
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <AdminKpiCard
           label="Timer i perioden"
           value={formatHours(summaryKpis.totalHours)}
-          helper={periodMeta.helper}
+          helper={periodMeta.label}
           icon={Clock3}
         />
         <AdminKpiCard
@@ -206,7 +188,7 @@ export function AdminDashboard() {
             <h2 className="text-lg font-medium text-[#0F2A1D]">Tid pr. projekt</h2>
           </div>
           <p className="mt-1 text-sm capitalize text-[#0F2A1D]/55">
-            {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}
+            {summaryPeriodLabel}
           </p>
 
           <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,220px)_1fr]">
@@ -279,6 +261,85 @@ export function AdminDashboard() {
           </div>
         </section>
       </div>
+
+      <section className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_24px_-8px_rgba(15,42,29,0.1)] ring-1 ring-black/[0.04]">
+        <div className="border-b border-black/[0.06] px-6 py-4">
+          <h2 className="text-lg font-medium text-[#0F2A1D]">Projektsammendrag</h2>
+          <p className="text-sm text-[#0F2A1D]/50">{periodMeta.label}</p>
+        </div>
+        <ul className="divide-y divide-black/[0.06]">
+          {projectDashboardRows.length === 0 ? (
+            <li className="px-6 py-10 text-center text-sm text-[#0F2A1D]/55">
+              Ingen projekter i perioden.
+            </li>
+          ) : (
+            projectDashboardRows.map((row) => {
+              const shareWidth = `${Math.max(4, row.sharePct)}%`;
+              const color = getProjectColor(row.projectSlug);
+              const avatarUsers = row.userIds.slice(0, 5);
+              return (
+                <li key={row.projectSlug}>
+                  <Link
+                    href={`/admin/project/${encodeURIComponent(row.projectSlug)}`}
+                    className="flex flex-col gap-4 px-6 py-5 transition hover:bg-[#F8FAF9] sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="truncate text-base font-semibold text-[#0F2A1D]">{row.projectName}</span>
+                      </div>
+                      <div className="mt-3 max-w-xl">
+                        <div className="mb-1 flex justify-between text-xs font-medium text-[#0F2A1D]/55">
+                          <span>Andel af total tid i perioden</span>
+                          <span>{row.sharePct.toFixed(0)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-[#F8FAF9] ring-1 ring-black/[0.05]">
+                          <div className="h-full rounded-full" style={{ width: shareWidth, backgroundColor: color }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-6">
+                      <div className="text-right">
+                        <div className="text-2xl font-bold tabular-nums text-[#0F2A1D]">
+                          {formatHours(row.periodHours)}{" "}
+                          <span className="text-base font-semibold text-[#0F2A1D]/45">t</span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-[#0F2A1D]/50">
+                          {row.userIds.length} aktive brugere
+                        </div>
+                      </div>
+                      <div className="flex -space-x-2">
+                        {avatarUsers.map((userId, index) => {
+                          const name = profileNameById.get(userId) ?? "Ukendt bruger";
+                          const avatarUrl = avatarByUserId.get(userId) ?? null;
+                          return (
+                            <span
+                              key={userId}
+                              className="relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-semibold shadow-sm"
+                              style={{
+                                zIndex: avatarUsers.length - index,
+                                backgroundColor: avatarUrl ? undefined : "#C0E6BA",
+                                color: "#0F2A1D",
+                              }}
+                              title={name}
+                            >
+                              {avatarUrl ? (
+                                <span className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url("${avatarUrl}")` }} />
+                              ) : (
+                                getInitials(name)
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      </section>
     </div>
   );
 }

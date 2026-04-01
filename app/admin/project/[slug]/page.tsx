@@ -14,6 +14,7 @@ import { useParams } from "next/navigation";
 import { useMemo } from "react";
 import { useAdminContext } from "../../admin-provider";
 import { AdminKpiCard } from "../../_components/admin-kpi";
+import { PeriodToggle } from "../../_components/period-toggle";
 import { formatHours, getInitials, getProjectColor } from "../../admin-utils";
 
 export default function AdminProjectDetailPage() {
@@ -27,6 +28,8 @@ export default function AdminProjectDetailPage() {
     summaryPeriodLabel,
     monthsToShow,
     exportProjectCsv,
+    summaryRange,
+    setSummaryRange,
   } = useAdminContext();
 
   const row = useMemo(
@@ -44,10 +47,10 @@ export default function AdminProjectDetailPage() {
           Der findes ingen data for dette projekt i den aktuelle periode.
         </p>
         <Link
-          href="/admin/projects"
+          href="/admin"
           className="mt-6 inline-flex rounded-xl bg-[#0F2A1D] px-4 py-2.5 text-sm font-semibold text-white"
         >
-          Tilbage til projekter
+          Tilbage til dashboard
         </Link>
       </div>
     );
@@ -58,10 +61,10 @@ export default function AdminProjectDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
-            href="/admin/projects"
+            href="/admin"
             className="text-sm font-medium text-[#0F2A1D]/50 hover:text-[#0F2A1D]"
           >
-            ← Projekter
+            ← Dashboard
           </Link>
           <div className="mt-3 flex items-center gap-3">
             <span
@@ -71,7 +74,7 @@ export default function AdminProjectDetailPage() {
             />
             <h1 className="text-2xl font-semibold tracking-tight text-[#0F2A1D]">{row.projectName}</h1>
           </div>
-          <p className="mt-1 text-sm text-[#0F2A1D]/55">{periodMeta.helper}</p>
+          <p className="mt-1 text-sm text-[#0F2A1D]/55">{periodMeta.label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="rounded-2xl bg-white px-5 py-4 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.1)] ring-1 ring-black/[0.04]">
@@ -89,11 +92,19 @@ export default function AdminProjectDetailPage() {
         </div>
       </div>
 
+      <section className="rounded-2xl bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.08)] ring-1 ring-black/[0.04]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-lg font-medium text-[#0F2A1D]">Rapportperiode</h2>
+          <PeriodToggle value={summaryRange} onChange={setSummaryRange} />
+        </div>
+        <p className="mt-2 text-sm text-[#0F2A1D]/50">{periodMeta.label}</p>
+      </section>
+
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <AdminKpiCard
           label="Timer i perioden"
           value={formatHours(row.periodHours)}
-          helper={periodMeta.helper}
+          helper={periodMeta.label}
           icon={Clock3}
         />
         <AdminKpiCard
@@ -147,7 +158,7 @@ export default function AdminProjectDetailPage() {
         <section className="rounded-2xl bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.1)] ring-1 ring-black/[0.04]">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-[#0F2A1D]/60" />
-            <h2 className="text-lg font-medium text-[#0F2A1D]">Månedlig trend</h2>
+            <h2 className="text-lg font-medium text-[#0F2A1D]">Tidsudvikling</h2>
           </div>
           <div className="mt-4 space-y-3">
             {row.byMonth.length === 0 ? (
@@ -202,7 +213,7 @@ export default function AdminProjectDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-[0_4px_24px_-8px_rgba(15,42,29,0.08)] ring-1 ring-black/[0.04]">
         <p className="text-sm text-[#0F2A1D]/55">
           <span className="font-medium capitalize text-[#0F2A1D]">
-            {summaryPeriodLabel.charAt(0).toUpperCase() + summaryPeriodLabel.slice(1)}
+            {summaryPeriodLabel}
           </span>
           : {formatHours(row.periodHours)} t
         </p>

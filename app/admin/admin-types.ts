@@ -34,4 +34,4 @@ export type TimeEntryRow = {
   location: string | null;
 };
 
-export type ReportRange = "weekly" | "monthly" | "quarter" | "year";
+export type ReportRange = "week" | "month" | "3months" | "12months";

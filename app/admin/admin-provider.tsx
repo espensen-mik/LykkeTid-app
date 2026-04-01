@@ -156,7 +156,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [newSubcategorySortOrder, setNewSubcategorySortOrder] = useState("0");
   const [subcategoryError, setSubcategoryError] = useState("");
   const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
-  const [summaryRange, setSummaryRange] = useState<ReportRange>("quarter");
+  const [summaryRange, setSummaryRange] = useState<ReportRange>("3months");
 
   useEffect(() => {
     let isActive = true;
@@ -388,33 +388,33 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [subcategories]);
 
   const periodMeta = useMemo(() => {
-    if (summaryRange === "weekly") {
+    if (summaryRange === "week") {
       return {
-        label: "denne uge",
-        helper: "Mandag til i dag",
+        label: "Denne uge",
+        helper: "Denne uge",
         start: getStartOfCurrentWeekMonday(),
         end: getEndOfToday(),
       };
     }
-    if (summaryRange === "monthly") {
+    if (summaryRange === "month") {
       return {
-        label: "denne måned",
-        helper: "1. i måneden til i dag",
+        label: "Denne måned",
+        helper: "Denne måned",
         start: getStartOfCurrentMonth(),
         end: getEndOfToday(),
       };
     }
-    if (summaryRange === "quarter") {
+    if (summaryRange === "3months") {
       return {
-        label: "3 mdr",
-        helper: "Seneste 3 måneder til i dag",
+        label: "Seneste 3 måneder",
+        helper: "Seneste 3 måneder",
         start: getStartMonthsAgo(2),
         end: getEndOfToday(),
       };
     }
     return {
-      label: "12 mdr",
-      helper: "Seneste 12 måneder til i dag",
+      label: "Seneste 12 måneder",
+      helper: "Seneste 12 måneder",
       start: getStartMonthsAgo(11),
       end: getEndOfToday(),
     };
@@ -552,11 +552,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const summaryPeriodLabel = periodMeta.label;
   const monthsToShow =
-    summaryRange === "weekly"
+    summaryRange === "week"
       ? 1
-      : summaryRange === "monthly"
+      : summaryRange === "month"
         ? 1
-        : summaryRange === "quarter"
+        : summaryRange === "3months"
           ? 3
           : 12;
 
@@ -577,14 +577,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
     const expectedTotal = activeEmployees * expectedHoursPerEmployee;
     const registrationRatePct = expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
-    const registrationRateHelper =
-      summaryRange === "weekly"
-        ? "Baseret på arbejdsdage indtil i dag"
-        : summaryRange === "monthly"
-          ? "Baseret på arbejdsdage i måneden til dato"
-          : summaryRange === "quarter"
-            ? "Baseret på arbejdsdage i de seneste 3 måneder"
-            : "Baseret på arbejdsdage i de seneste 12 måneder";
+    const registrationRateHelper = `Baseret på arbejdsdage i ${periodMeta.label.toLowerCase()}`;
 
     const clampedRegistrationRatePct = Math.max(0, registrationRatePct);
 
@@ -595,7 +588,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       registrationRatePct: clampedRegistrationRatePct,
       registrationRateHelper,
     };
-  }, [periodMeta.end, periodMeta.start, summaryFilteredEntries, summaryRange]);
+  }, [periodMeta.end, periodMeta.label, periodMeta.start, summaryFilteredEntries]);
 
   const registrationByDay = useMemo(() => {
     const todayEnd = getEndOfToday();
