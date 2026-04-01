@@ -39,6 +39,7 @@ export function AdminDashboard() {
     projectDashboardRows,
     profileNameById,
     avatarByUserId,
+    projectColorBySlug,
   } = useAdminContext();
 
   const pieRows = useMemo(() => {
@@ -218,7 +219,10 @@ export function AdminDashboard() {
                         paddingAngle={2}
                       >
                         {pieChartData.map((entry) => (
-                          <Cell key={`cell-${entry.slug}`} fill={getProjectColor(entry.slug)} />
+                          <Cell
+                            key={`cell-${entry.slug}`}
+                            fill={getProjectColor(entry.slug, projectColorBySlug.get(entry.slug))}
+                          />
                         ))}
                       </Pie>
                       <Tooltip
@@ -240,7 +244,10 @@ export function AdminDashboard() {
                 <p className="text-sm text-[#0F2A1D]/55">Ingen tidsdata i perioden.</p>
               ) : (
                 pieRows.map((row) => {
-                  const color = getProjectColor(row.projectSlug);
+                  const color = getProjectColor(
+                    row.projectSlug,
+                    projectColorBySlug.get(row.projectSlug)
+                  );
                   const pct = pieTotal > 0 ? (row.periodHours / pieTotal) * 100 : 0;
                   return (
                     <div
@@ -281,7 +288,10 @@ export function AdminDashboard() {
           ) : (
             projectDashboardRows.map((row) => {
               const shareWidth = `${Math.max(4, row.sharePct)}%`;
-              const color = getProjectColor(row.projectSlug);
+              const color = getProjectColor(
+                row.projectSlug,
+                projectColorBySlug.get(row.projectSlug)
+              );
               const avatarUsers = row.userIds.slice(0, 5);
               return (
                 <li key={row.projectSlug}>
@@ -324,7 +334,9 @@ export function AdminDashboard() {
                               className="relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-semibold shadow-sm"
                               style={{
                                 zIndex: avatarUsers.length - index,
-                                backgroundColor: avatarUrl ? undefined : getProjectColorSoft(row.projectSlug),
+                                backgroundColor: avatarUrl
+                                  ? undefined
+                                  : getProjectColorSoft(row.projectSlug),
                                 color: "#0F2A1D",
                               }}
                               title={name}

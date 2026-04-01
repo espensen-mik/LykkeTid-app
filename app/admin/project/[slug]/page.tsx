@@ -31,6 +31,7 @@ export default function AdminProjectDetailPage() {
     exportProjectCsv,
     summaryRange,
     setSummaryRange,
+    projectColorBySlug,
   } = useAdminContext();
 
   const row = useMemo(
@@ -38,7 +39,7 @@ export default function AdminProjectDetailPage() {
     [projectDashboardRows, slug]
   );
 
-  const color = getProjectColor(slug);
+  const color = getProjectColor(slug, projectColorBySlug.get(slug));
   const subcategoryTotal = row?.bySubcategory.reduce((sum, sub) => sum + sub.hours, 0) ?? 0;
   const subcategoryChartData =
     row?.bySubcategory.map((sub, index) => ({

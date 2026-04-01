@@ -69,6 +69,10 @@ type AdminContextValue = {
   setProjectSlug: (v: string) => void;
   projectSortOrder: string;
   setProjectSortOrder: (v: string) => void;
+  projectColor: string;
+  setProjectColor: (v: string) => void;
+  projectIsActive: boolean;
+  setProjectIsActive: (v: boolean) => void;
   creatingProject: boolean;
   createProjectError: string;
   openSubcategoryProjectId: string | null;
@@ -81,9 +85,23 @@ type AdminContextValue = {
   summaryRange: ReportRange;
   setSummaryRange: (v: ReportRange) => void;
   handleCreateProject: (e: FormEvent) => Promise<void>;
+  updateProject: (params: {
+    projectId: string;
+    name: string;
+    slug: string;
+    color: string;
+    sortOrder: string;
+    isActive: boolean;
+  }) => Promise<boolean>;
   openSubcategoryForm: (projectId: string) => void;
   closeSubcategoryForm: () => void;
   handleCreateSubcategory: (projectId: string) => Promise<void>;
+  updateSubcategory: (params: {
+    subcategoryId: string;
+    name: string;
+    sortOrder: string;
+    isActive: boolean;
+  }) => Promise<boolean>;
   subcategoriesByProjectId: Map<string, SubcategoryRow[]>;
   periodMeta: {
     label: string;
@@ -99,6 +117,7 @@ type AdminContextValue = {
     totalHours: number;
   }>;
   projectNameBySlug: Map<string, string>;
+  projectColorBySlug: Map<string, string>;
   profileNameById: Map<string, string>;
   avatarByUserId: Map<string, string | null>;
   projectDashboardRows: ProjectDashboardRow[];
@@ -147,6 +166,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [projectName, setProjectName] = useState("");
   const [projectSlug, setProjectSlug] = useState("");
   const [projectSortOrder, setProjectSortOrder] = useState("0");
+  const [projectColor, setProjectColor] = useState("#6050DC");
+  const [projectIsActive, setProjectIsActive] = useState(true);
   const [creatingProject, setCreatingProject] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
   const [openSubcategoryProjectId, setOpenSubcategoryProjectId] = useState<string | null>(
@@ -221,7 +242,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const fetchProjects = useCallback(async () => {
     const { data, error } = await supabase
       .from("projects")
-      .select("id, name, slug, is_active, sort_order")
+      .select("id, name, slug, color, is_active, sort_order")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
@@ -321,8 +342,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.from("projects").insert({
       name: projectName.trim(),
       slug: projectSlug.trim(),
+      color: projectColor.trim() || null,
       sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
-      is_active: true,
+      is_active: projectIsActive,
     });
 
     if (error) {
@@ -334,6 +356,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setProjectName("");
     setProjectSlug("");
     setProjectSortOrder("0");
+    setProjectColor("#6050DC");
+    setProjectIsActive(true);
     await fetchProjects();
     setCreatingProject(false);
   };
@@ -375,6 +399,50 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     await Promise.all([fetchProjects(), fetchSubcategories()]);
     setIsSavingSubcategory(false);
     closeSubcategoryForm();
+  };
+
+  const updateProject = async (params: {
+    projectId: string;
+    name: string;
+    slug: string;
+    color: string;
+    sortOrder: string;
+    isActive: boolean;
+  }): Promise<boolean> => {
+    const sortOrderValue = Number(params.sortOrder);
+    const { error } = await supabase
+      .from("projects")
+      .update({
+        name: params.name.trim(),
+        slug: params.slug.trim(),
+        color: params.color.trim() || null,
+        sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+        is_active: params.isActive,
+      })
+      .eq("id", params.projectId);
+    if (error) return false;
+    await fetchProjects();
+    return true;
+  };
+
+  const updateSubcategory = async (params: {
+    subcategoryId: string;
+    name: string;
+    sortOrder: string;
+    isActive: boolean;
+  }): Promise<boolean> => {
+    const sortOrderValue = Number(params.sortOrder);
+    const { error } = await supabase
+      .from("project_subcategories")
+      .update({
+        name: params.name.trim(),
+        sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+        is_active: params.isActive,
+      })
+      .eq("id", params.subcategoryId);
+    if (error) return false;
+    await fetchSubcategories();
+    return true;
   };
 
   const subcategoriesByProjectId = useMemo(() => {
@@ -465,6 +533,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const map = new Map<string, string>();
     for (const project of projects) {
       map.set(project.slug, project.name);
+    }
+    return map;
+  }, [projects]);
+
+  const projectColorBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects) {
+      if (project.color?.trim()) {
+        map.set(project.slug, project.color.trim());
+      }
     }
     return map;
   }, [projects]);
@@ -660,6 +738,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setProjectSlug,
     projectSortOrder,
     setProjectSortOrder,
+    projectColor,
+    setProjectColor,
+    projectIsActive,
+    setProjectIsActive,
     creatingProject,
     createProjectError,
     openSubcategoryProjectId,
@@ -672,15 +754,18 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     summaryRange,
     setSummaryRange,
     handleCreateProject,
+    updateProject,
     openSubcategoryForm,
     closeSubcategoryForm,
     handleCreateSubcategory,
+    updateSubcategory,
     subcategoriesByProjectId,
     periodMeta,
     summaryFilteredEntries,
     filteredTimeEntries,
     timeUsageByProject,
     projectNameBySlug,
+    projectColorBySlug,
     profileNameById,
     avatarByUserId,
     projectDashboardRows,

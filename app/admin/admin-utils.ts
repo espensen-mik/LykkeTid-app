@@ -178,9 +178,15 @@ function persistProjectColorMap() {
   }
 }
 
-export function getProjectColor(projectId: string): string {
+export function getProjectColor(projectId: string, preferredColor?: string | null): string {
   hydrateProjectColorMap();
   const key = projectId.trim().toLowerCase();
+  const preferred = preferredColor?.trim() || "";
+  if (preferred) {
+    projectColorMap[key] = preferred;
+    persistProjectColorMap();
+    return preferred;
+  }
   if (!key) return PROJECT_COLORS[0];
 
   if (!projectColorMap[key]) {

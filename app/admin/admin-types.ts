@@ -11,6 +11,7 @@ export type ProjectRow = {
   id: string;
   name: string;
   slug: string;
+  color: string | null;
   is_active: boolean;
   sort_order: number | null;
 };
