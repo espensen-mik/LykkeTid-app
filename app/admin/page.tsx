@@ -125,6 +125,20 @@ function getEndOfToday(): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 }
 
+function countWeekdaysInclusive(start: Date, end: Date): number {
+  const cursor = new Date(start);
+  cursor.setHours(12, 0, 0, 0);
+  const endAtNoon = new Date(end);
+  endAtNoon.setHours(12, 0, 0, 0);
+  let count = 0;
+  while (cursor <= endAtNoon) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
 function formatMonthKey(monthKey: string): string {
   const [yearRaw, monthRaw] = monthKey.split("-");
   const year = Number(yearRaw);
@@ -658,16 +672,35 @@ export default function AdminPage() {
 
     const activeEmployees = userIds.size;
     const activeProjects = projectIds.size;
-    const avgHoursPerEmployee =
-      activeEmployees > 0 ? totalHours / activeEmployees : 0;
+    let registrationRatePct: number | null = null;
+    let registrationRateHelper = "Ikke relevant for hele perioden";
+
+    if (summaryRange === "weekly") {
+      const expectedHoursPerEmployee = 7.5 * 5;
+      const expectedTotal = activeEmployees * expectedHoursPerEmployee;
+      registrationRatePct =
+        expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
+      registrationRateHelper = "Baseret på 7,5 t × 5 hverdage";
+    } else if (summaryRange === "monthly" && periodMeta.start && periodMeta.end) {
+      const weekdaysToDate = countWeekdaysInclusive(periodMeta.start, periodMeta.end);
+      const expectedHoursPerEmployee = 7.5 * weekdaysToDate;
+      const expectedTotal = activeEmployees * expectedHoursPerEmployee;
+      registrationRatePct =
+        expectedTotal > 0 ? (totalHours / expectedTotal) * 100 : 0;
+      registrationRateHelper = "Baseret på arbejdsdage i måneden til dato";
+    }
+
+    const clampedRegistrationRatePct =
+      registrationRatePct === null ? null : Math.max(0, registrationRatePct);
 
     return {
       totalHours,
       activeEmployees,
       activeProjects,
-      avgHoursPerEmployee,
+      registrationRatePct: clampedRegistrationRatePct,
+      registrationRateHelper,
     };
-  }, [summaryFilteredEntries]);
+  }, [periodMeta.end, periodMeta.start, summaryFilteredEntries, summaryRange]);
 
   const exportProjectCsv = (projectSlug: string) => {
     const target = projectDashboardRows.find((row) => row.projectSlug === projectSlug);
@@ -974,12 +1007,40 @@ export default function AdminPage() {
               helper="Unikke projekter med registreringer"
               icon={ListTree}
             />
-            <KpiCard
-              label="Gns. timer pr. medarbejder"
-              value={formatHours(summaryKpis.avgHoursPerEmployee)}
-              helper="Baseret på aktive medarbejdere"
-              icon={TrendingUp}
-            />
+            <article className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-evergreen/60">
+                <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Registreringsgrad</span>
+              </div>
+              <div className="mt-1 text-[28px] font-bold leading-none text-forest">
+                {summaryKpis.registrationRatePct === null
+                  ? "—"
+                  : `${Math.round(summaryKpis.registrationRatePct)}%`}
+              </div>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-evergreen/10 ring-1 ring-evergreen/8">
+                <div
+                  className={[
+                    "h-full rounded-full",
+                    summaryKpis.registrationRatePct === null
+                      ? "bg-evergreen/25"
+                      : summaryKpis.registrationRatePct < 50
+                      ? "bg-rose-500"
+                      : summaryKpis.registrationRatePct < 80
+                      ? "bg-amber-400"
+                      : "bg-accent",
+                  ].join(" ")}
+                  style={{
+                    width:
+                      summaryKpis.registrationRatePct === null
+                        ? "20%"
+                        : `${Math.min(100, Math.max(0, summaryKpis.registrationRatePct))}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-1 text-[11px] text-evergreen/62">
+                {summaryKpis.registrationRateHelper}
+              </div>
+            </article>
           </section>
 
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
