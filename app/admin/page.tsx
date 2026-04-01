@@ -118,6 +118,25 @@ function formatMonthKey(monthKey: string): string {
   );
 }
 
+function toDayKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getRecentWeekdays(count: number): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  while (days.length < count) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return days.reverse();
+}
+
 function getProjectColor(projectSlug: string): string {
   const slug = projectSlug.toLowerCase();
   if (slug === "drift") return "#4ca771";
@@ -536,9 +555,36 @@ export default function AdminPage() {
         .sort((a, b) => a.projectSlug.localeCompare(b.projectSlug, "da"))
         .map((row) => ({
           projectName: projectNameBySlug.get(row.projectSlug) ?? row.projectSlug,
+          projectSlug: row.projectSlug,
           totalHours: row.totalHours,
           currentMonthHours: row.currentMonthHours,
         }));
+
+      const dayTotals = new Map<string, number>();
+      for (const entry of userEntries) {
+        const hours = getEntryDurationHours(entry.start_time, entry.end_time);
+        dayTotals.set(entry.entry_date, (dayTotals.get(entry.entry_date) ?? 0) + hours);
+      }
+      const recentWeekdayStatus = getRecentWeekdays(5).map((d) => {
+        const dayKey = toDayKey(d);
+        const hours = dayTotals.get(dayKey) ?? 0;
+        const weekday = new Intl.DateTimeFormat("da-DK", { weekday: "short" }).format(d);
+        const normalized = Math.min(1, hours / 7.5);
+        const barColor = hours <= 3 ? "bg-rose-500" : hours <= 5 ? "bg-amber-400" : "bg-accent";
+        return {
+          dayKey,
+          weekday,
+          hours,
+          normalized,
+          barColor,
+        };
+      });
+
+      const topProjects = projectsList
+        .slice()
+        .sort((a, b) => b.currentMonthHours - a.currentMonthHours)
+        .filter((row) => row.currentMonthHours > 0)
+        .slice(0, 3);
 
       return {
         id: p.id,
@@ -550,6 +596,8 @@ export default function AdminPage() {
         totalHours,
         currentMonthHours,
         projectsList,
+        recentWeekdayStatus,
+        topProjects,
       };
     });
   }, [profiles, projectNameBySlug, timeEntries]);
@@ -889,6 +937,60 @@ export default function AdminPage() {
                     <div>Timer i alt: {formatHours(user.totalHours)}</div>
                     <div>Denne måned: {formatHours(user.currentMonthHours)}</div>
                   </div>
+                </div>
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <section className="rounded-lg border border-line-soft/30 bg-white/65 p-3">
+                    <div className="text-[13px] font-semibold text-forest">Din status</div>
+                    <div className="mt-0.5 text-[11px] text-evergreen/60">
+                      Så god har du været til at timeregistrere den seneste uge
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {user.recentWeekdayStatus.map((item) => (
+                        <div key={item.dayKey}>
+                          <div className="mb-1 flex items-center justify-between text-[11px]">
+                            <span className="font-medium capitalize text-forest/80">
+                              {item.weekday.replace(".", "")}
+                            </span>
+                            <span className="font-semibold text-evergreen">
+                              {formatHours(item.hours)} t
+                            </span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-mint/55">
+                            <div
+                              className={`h-full rounded-full ${item.barColor}`}
+                              style={{ width: `${Math.max(3, item.normalized * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-line-soft/30 bg-white/65 p-3">
+                    <div className="text-[13px] font-semibold text-forest">
+                      Top 3 projekter (denne måned)
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {user.topProjects.length === 0 ? (
+                        <div className="text-[12px] text-evergreen/60">
+                          Ingen timer registreret denne måned.
+                        </div>
+                      ) : (
+                        user.topProjects.map((project) => (
+                          <div
+                            key={`${user.id}-${project.projectSlug}`}
+                            className="flex items-center justify-between rounded-lg border border-line-soft/20 bg-white/70 px-2.5 py-1.5 text-[12px]"
+                          >
+                            <span className="font-medium text-forest/90">{project.projectName}</span>
+                            <span className="text-evergreen/70">
+                              {formatHours(project.currentMonthHours)} t
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </section>
                 </div>
               </article>
             ))}
