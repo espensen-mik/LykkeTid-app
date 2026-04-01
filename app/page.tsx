@@ -408,8 +408,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!profileOpen) return;
-    const randomIndex = Math.floor(Math.random() * PROFILE_FUN_QUOTES.length);
-    setProfileFunQuote(PROFILE_FUN_QUOTES[randomIndex] ?? "");
+    const timer = setTimeout(() => {
+      const randomIndex = Math.floor(Math.random() * PROFILE_FUN_QUOTES.length);
+      setProfileFunQuote(PROFILE_FUN_QUOTES[randomIndex] ?? "");
+    }, 0);
+    return () => clearTimeout(timer);
   }, [profileOpen]);
 
   async function fetchDayEntries(dayKey: string, forUserId: string) {
@@ -946,7 +949,7 @@ export default function Home() {
               )}
             </div>
             {profileFunQuote ? (
-              <div className="mx-auto mt-4 max-w-[19rem] px-2 text-center text-[11px] italic leading-relaxed text-evergreen/62">
+              <div className="mx-auto mt-4 max-w-[19rem] px-2 text-center text-[13px] italic leading-relaxed text-evergreen/70">
                 {profileFunQuote}
               </div>
             ) : null}

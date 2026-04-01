@@ -43,6 +43,7 @@ type TimeEntryRow = {
 };
 
 type AdminTab = "time-usage" | "project-management" | "users";
+type ReportRange = "weekly" | "monthly" | "all";
 
 function slugify(input: string): string {
   return input
@@ -82,6 +83,39 @@ function formatCreatedAt(value: string | null): string {
     month: "short",
     year: "numeric",
   }).format(d);
+}
+
+function parseDayKeyToDate(dayKey: string): Date {
+  const [yearRaw, monthRaw, dayRaw] = dayKey.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function getStartOfCurrentWeekMonday(): Date {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMonday = (day + 6) % 7;
+  const start = new Date(now);
+  start.setDate(now.getDate() - diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function getStartOfCurrentMonth(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function formatMonthKey(monthKey: string): string {
+  const [yearRaw, monthRaw] = monthKey.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const date = new Date(year, month - 1, 1, 12, 0, 0, 0);
+  return new Intl.DateTimeFormat("da-DK", { month: "long", year: "numeric" }).format(
+    date
+  );
 }
 
 function getProjectColor(projectSlug: string): string {
@@ -136,6 +170,8 @@ export default function AdminPage() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
   const [activeTab, setActiveTab] = useState<AdminTab>("time-usage");
+  const [reportRange, setReportRange] = useState<ReportRange>("monthly");
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -325,39 +361,25 @@ export default function AdminPage() {
     return map;
   }, [subcategories]);
 
+  const filteredTimeEntries = useMemo(() => {
+    if (reportRange === "all") return timeEntries;
+    const start =
+      reportRange === "weekly" ? getStartOfCurrentWeekMonday() : getStartOfCurrentMonth();
+    return timeEntries.filter((entry) => parseDayKeyToDate(entry.entry_date) >= start);
+  }, [reportRange, timeEntries]);
+
   const timeUsageByProject = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
-    const usageMap = new Map<
-      string,
-      { projectName: string; totalHours: number; currentMonthHours: number; sortOrder: number | null }
-    >();
-
+    const usageMap = new Map<string, { projectName: string; totalHours: number }>();
     const activeProjects = projects.filter((p) => p.is_active);
 
     for (const project of activeProjects) {
-      usageMap.set(project.slug, {
-        projectName: project.name,
-        totalHours: 0,
-        currentMonthHours: 0,
-        sortOrder: project.sort_order,
-      });
+      usageMap.set(project.slug, { projectName: project.name, totalHours: 0 });
     }
 
-    for (const entry of timeEntries) {
+    for (const entry of filteredTimeEntries) {
       const usage = usageMap.get(entry.project_id);
       if (!usage) continue;
-      const hours = getEntryDurationHours(entry.start_time, entry.end_time);
-      usage.totalHours += hours;
-
-      const [yearRaw, monthRaw] = entry.entry_date.split("-");
-      const y = Number(yearRaw);
-      const m = Number(monthRaw);
-      if (y === currentYear && m === currentMonth) {
-        usage.currentMonthHours += hours;
-      }
+      usage.totalHours += getEntryDurationHours(entry.start_time, entry.end_time);
     }
 
     return activeProjects
@@ -374,10 +396,9 @@ export default function AdminPage() {
           projectName: project.name,
           projectSlug: project.slug,
           totalHours: usage?.totalHours ?? 0,
-          currentMonthHours: usage?.currentMonthHours ?? 0,
         };
       });
-  }, [projects, timeEntries]);
+  }, [filteredTimeEntries, projects]);
 
   const projectNameBySlug = useMemo(() => {
     const map = new Map<string, string>();
@@ -386,6 +407,78 @@ export default function AdminPage() {
     }
     return map;
   }, [projects]);
+
+  const profileNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of profiles) {
+      map.set(p.id, p.full_name?.trim() || p.title?.trim() || "Bruger");
+    }
+    return map;
+  }, [profiles]);
+
+  const effectiveSelectedProjectSlug = useMemo(() => {
+    if (!selectedProjectSlug) return null;
+    const exists = projects.some((project) => project.slug === selectedProjectSlug);
+    return exists ? selectedProjectSlug : null;
+  }, [projects, selectedProjectSlug]);
+
+  const selectedProjectDetails = useMemo(() => {
+    if (!effectiveSelectedProjectSlug) return null;
+
+    const rangeEntries = filteredTimeEntries.filter(
+      (entry) => entry.project_id === effectiveSelectedProjectSlug
+    );
+    const allEntries = timeEntries.filter(
+      (entry) => entry.project_id === effectiveSelectedProjectSlug
+    );
+
+    const totalHoursInRange = rangeEntries.reduce(
+      (sum, entry) => sum + getEntryDurationHours(entry.start_time, entry.end_time),
+      0
+    );
+
+    const byUserMap = new Map<string, number>();
+    for (const entry of rangeEntries) {
+      const hours = getEntryDurationHours(entry.start_time, entry.end_time);
+      byUserMap.set(entry.user_id, (byUserMap.get(entry.user_id) ?? 0) + hours);
+    }
+    const byUser = Array.from(byUserMap.entries())
+      .map(([userId, hours]) => ({
+        userId,
+        userName: profileNameById.get(userId) ?? "Ukendt bruger",
+        hours,
+      }))
+      .sort((a, b) => b.hours - a.hours);
+
+    const byMonthMap = new Map<string, number>();
+    for (const entry of allEntries) {
+      const monthKey = entry.entry_date.slice(0, 7);
+      const hours = getEntryDurationHours(entry.start_time, entry.end_time);
+      byMonthMap.set(monthKey, (byMonthMap.get(monthKey) ?? 0) + hours);
+    }
+    const byMonth = Array.from(byMonthMap.entries())
+      .map(([monthKey, hours]) => ({
+        monthKey,
+        label: formatMonthKey(monthKey),
+        hours,
+      }))
+      .sort((a, b) => b.monthKey.localeCompare(a.monthKey, "da"));
+
+    return {
+      projectSlug: effectiveSelectedProjectSlug,
+      projectName:
+        projectNameBySlug.get(effectiveSelectedProjectSlug) ?? effectiveSelectedProjectSlug,
+      totalHoursInRange,
+      byUser,
+      byMonth,
+    };
+  }, [
+    effectiveSelectedProjectSlug,
+    filteredTimeEntries,
+    profileNameById,
+    projectNameBySlug,
+    timeEntries,
+  ]);
 
   const userUsage = useMemo(() => {
     const now = new Date();
@@ -567,89 +660,88 @@ export default function AdminPage() {
       ) : activeTab === "time-usage" ? (
         <div className="mt-6 space-y-4">
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-[16px] font-semibold text-forest">Rapportperiode</h2>
+              <div className="flex items-center gap-2">
+                {([
+                  ["weekly", "Uge"],
+                  ["monthly", "Måned"],
+                  ["all", "Alt"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setReportRange(value)}
+                    className={[
+                      "rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition",
+                      reportRange === value
+                        ? "border-accent/50 bg-accent/10 text-forest"
+                        : "border-line-soft/60 bg-white/70 text-evergreen/75 hover:bg-pastel/20",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
             <h2 className="text-[16px] font-semibold text-forest">Fordeling af tid pr. projekt</h2>
             {(() => {
-              const allRows = timeUsageByProject.filter((row) => row.totalHours > 0);
-              const monthRows = timeUsageByProject.filter(
-                (row) => row.currentMonthHours > 0
+              const rows = timeUsageByProject.filter((row) => row.totalHours > 0);
+              const total = rows.reduce((sum, row) => sum + row.totalHours, 0);
+              const segments = buildPieSegments(
+                rows.map((row) => ({ projectName: row.projectName, totalHours: row.totalHours }))
               );
-              const allTotal = allRows.reduce((sum, row) => sum + row.totalHours, 0);
-              const monthTotal = monthRows.reduce(
-                (sum, row) => sum + row.currentMonthHours,
-                0
-              );
-              const allSegments = buildPieSegments(
-                allRows.map((row) => ({ projectName: row.projectName, totalHours: row.totalHours }))
-              );
-              const monthSegments = buildPieSegments(
-                monthRows.map((row) => ({
-                  projectName: row.projectName,
-                  totalHours: row.currentMonthHours,
-                }))
-              );
-              const allGradient =
-                allSegments.length === 0
+              const gradient =
+                segments.length === 0
                   ? "conic-gradient(#d9e5d3 0deg 360deg)"
-                  : `conic-gradient(${allSegments
+                  : `conic-gradient(${segments
                       .map((segment, i) => {
-                        const color = getProjectColor(allRows[i]?.projectSlug ?? "");
-                        return `${color} ${segment.start}deg ${segment.end}deg`;
-                      })
-                      .join(", ")})`;
-              const monthGradient =
-                monthSegments.length === 0
-                  ? "conic-gradient(#d9e5d3 0deg 360deg)"
-                  : `conic-gradient(${monthSegments
-                      .map((segment, i) => {
-                        const color = getProjectColor(monthRows[i]?.projectSlug ?? "");
+                        const color = getProjectColor(rows[i]?.projectSlug ?? "");
                         return `${color} ${segment.start}deg ${segment.end}deg`;
                       })
                       .join(", ")})`;
 
               return (
-                <div className="mt-3 space-y-5">
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
-                      <div className="text-[12px] font-semibold text-evergreen/75">
-                        Al tid
-                      </div>
-                      <div className="mt-2 flex items-center justify-center">
-                        <div
-                          className="h-40 w-40 rounded-full border border-line-soft/45 shadow-[inset_0_1px_3px_rgba(15,42,29,0.08)]"
-                          style={{ background: allGradient }}
-                          aria-label="Fordeling af samlet tid på projekter"
-                        />
-                      </div>
+                <div className="mt-3 grid gap-4 lg:grid-cols-[18rem_1fr]">
+                  <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
+                    <div className="text-[12px] font-semibold text-evergreen/75">
+                      {reportRange === "weekly"
+                        ? "Denne uge"
+                        : reportRange === "monthly"
+                        ? "Denne måned"
+                        : "Al tid"}
                     </div>
-                    <div className="rounded-xl border border-line-soft/35 bg-white/65 p-3">
-                      <div className="text-[12px] font-semibold text-evergreen/75">
-                        Denne måned
-                      </div>
-                      <div className="mt-2 flex items-center justify-center">
-                        <div
-                          className="h-40 w-40 rounded-full border border-line-soft/45 shadow-[inset_0_1px_3px_rgba(15,42,29,0.08)]"
-                          style={{ background: monthGradient }}
-                          aria-label="Fordeling af månedens tid på projekter"
-                        />
-                      </div>
+                    <div className="mt-2 flex items-center justify-center">
+                      <div
+                        className="h-40 w-40 rounded-full border border-line-soft/45 shadow-[inset_0_1px_3px_rgba(15,42,29,0.08)]"
+                        style={{ background: gradient }}
+                        aria-label="Fordeling af tid på projekter"
+                      />
                     </div>
                   </div>
 
-                  <div className="min-w-[16rem] flex-1 space-y-1.5">
-                    {allRows.length === 0 ? (
-                      <div className="text-[13px] text-evergreen/65">
-                        Ingen tidsdata endnu.
-                      </div>
+                  <div className="space-y-1.5">
+                    {rows.length === 0 ? (
+                      <div className="text-[13px] text-evergreen/65">Ingen tidsdata i perioden.</div>
                     ) : (
-                      allRows.map((row) => {
+                      rows.map((row) => {
                         const color = getProjectColor(row.projectSlug);
-                        const pctAll = allTotal > 0 ? (row.totalHours / allTotal) * 100 : 0;
-                        const pctMonth =
-                          monthTotal > 0 ? (row.currentMonthHours / monthTotal) * 100 : 0;
+                        const pct = total > 0 ? (row.totalHours / total) * 100 : 0;
+                        const isSelected = selectedProjectSlug === row.projectSlug;
                         return (
-                          <div
-                            key={row.projectName}
-                            className="flex items-center justify-between rounded-lg border border-line-soft/25 bg-white/60 px-2.5 py-1.5 text-[12px]"
+                          <button
+                            key={row.projectSlug}
+                            type="button"
+                            onClick={() => setSelectedProjectSlug(row.projectSlug)}
+                            className={[
+                              "flex w-full items-center justify-between rounded-lg border px-2.5 py-1.5 text-left text-[12px] transition",
+                              isSelected
+                                ? "border-accent/45 bg-accent/10"
+                                : "border-line-soft/25 bg-white/60 hover:bg-pastel/20",
+                            ].join(" ")}
                           >
                             <div className="flex items-center gap-2">
                               <span
@@ -657,15 +749,12 @@ export default function AdminPage() {
                                 style={{ backgroundColor: color }}
                                 aria-hidden="true"
                               />
-                              <span className="font-medium text-forest/90">
-                                {row.projectName}
-                              </span>
+                              <span className="font-medium text-forest/90">{row.projectName}</span>
                             </div>
                             <span className="text-evergreen/70">
-                              I alt {formatHours(row.totalHours)} t ({pctAll.toFixed(0)}%) · Måned{" "}
-                              {formatHours(row.currentMonthHours)} t ({pctMonth.toFixed(0)}%)
+                              {formatHours(row.totalHours)} t ({pct.toFixed(0)}%)
                             </span>
-                          </div>
+                          </button>
                         );
                       })
                     )}
@@ -676,33 +765,31 @@ export default function AdminPage() {
           </section>
 
           <section className="rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
-            <h2 className="text-[16px] font-semibold text-forest">Projekter</h2>
+            <h2 className="text-[16px] font-semibold text-forest">Projekter (klik for detaljer)</h2>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[28rem] border-separate border-spacing-0 text-left">
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-evergreen/60">
+                    <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">Projekt</th>
                     <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
-                      Projekt
-                    </th>
-                    <th className="border-b border-line-soft/35 pb-2 pr-3 font-semibold">
-                      Timer i alt
-                    </th>
-                    <th className="border-b border-line-soft/35 pb-2 font-semibold">
-                      Timer denne måned
+                      Timer i periode
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {timeUsageByProject.map((row) => (
-                    <tr key={row.projectName} className="text-[13px] text-forest/90">
+                    <tr key={row.projectSlug} className="text-[13px] text-forest/90">
                       <td className="border-b border-line-soft/20 py-2 pr-3">
-                        {row.projectName}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProjectSlug(row.projectSlug)}
+                          className="font-medium hover:text-accent"
+                        >
+                          {row.projectName}
+                        </button>
                       </td>
                       <td className="border-b border-line-soft/20 py-2 pr-3">
                         {formatHours(row.totalHours)}
-                      </td>
-                      <td className="border-b border-line-soft/20 py-2">
-                        {formatHours(row.currentMonthHours)}
                       </td>
                     </tr>
                   ))}
@@ -710,6 +797,59 @@ export default function AdminPage() {
               </table>
             </div>
           </section>
+
+          {selectedProjectDetails ? (
+            <section className="rounded-2xl border border-line-soft/60 bg-white/88 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-[16px] font-semibold text-forest">
+                  Detaljer: {selectedProjectDetails.projectName}
+                </h3>
+                <div className="text-[12px] text-evergreen/70">
+                  Timer i valgt periode: {formatHours(selectedProjectDetails.totalHoursInRange)}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-line-soft/35 bg-white/70 p-3">
+                  <div className="text-[13px] font-semibold text-forest">Fordeling på brugere</div>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedProjectDetails.byUser.length === 0 ? (
+                      <div className="text-[12px] text-evergreen/65">Ingen data i perioden.</div>
+                    ) : (
+                      selectedProjectDetails.byUser.map((row) => (
+                        <div
+                          key={row.userId}
+                          className="flex items-center justify-between rounded-lg border border-line-soft/25 bg-white/65 px-2.5 py-1.5 text-[12px]"
+                        >
+                          <span className="font-medium text-forest/90">{row.userName}</span>
+                          <span className="text-evergreen/70">{formatHours(row.hours)} t</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-line-soft/35 bg-white/70 p-3">
+                  <div className="text-[13px] font-semibold text-forest">Udvikling pr. måned (al tid)</div>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedProjectDetails.byMonth.length === 0 ? (
+                      <div className="text-[12px] text-evergreen/65">Ingen data endnu.</div>
+                    ) : (
+                      selectedProjectDetails.byMonth.map((row) => (
+                        <div
+                          key={row.monthKey}
+                          className="flex items-center justify-between rounded-lg border border-line-soft/25 bg-white/65 px-2.5 py-1.5 text-[12px]"
+                        >
+                          <span className="font-medium capitalize text-forest/90">
+                            {row.label}
+                          </span>
+                          <span className="text-evergreen/70">{formatHours(row.hours)} t</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : activeTab === "users" ? (
         <section className="mt-6 rounded-2xl border border-line-soft/60 bg-white/85 p-4 shadow-[0_18px_50px_-38px_rgba(15,42,29,0.3)]">
