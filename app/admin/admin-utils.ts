@@ -153,6 +153,69 @@ function sumHoursInMonth(entries: readonly TimeEntryRow[], monthKey: string): nu
   return total;
 }
 
+/** Lowercase Danish month abbreviations (calendar month 1–12). */
+const DA_MONTH_SHORT = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "maj",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "okt",
+  "nov",
+  "dec",
+] as const;
+
+function daMonthShortFromKey(monthKey: string): string {
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(m) || m < 1 || m > 12) return "";
+  return DA_MONTH_SHORT[m - 1];
+}
+
+/** Twelve `YYYY-MM` keys from 11 months before the anchor month through the anchor month (inclusive). */
+export function getLast12CalendarMonthKeys(referenceDate: Date): string[] {
+  const ref = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1, 12, 0, 0, 0);
+  const keys: string[] = [];
+  for (let back = 11; back >= 0; back--) {
+    const d = new Date(ref.getFullYear(), ref.getMonth() - back, 1, 12, 0, 0, 0);
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+export type ProjectLast12MonthsRow = {
+  key: string;
+  monthShort: string;
+  tooltipTitle: string;
+  hours: number;
+  isCurrentMonth: boolean;
+};
+
+/**
+ * Fixed 12-month timeline for project detail (ignores report period filter).
+ * Uses all provided entries; months without data get `hours: 0`.
+ */
+export function buildProjectLast12MonthsSeries(
+  projectEntries: readonly TimeEntryRow[],
+  referenceDate: Date
+): ProjectLast12MonthsRow[] {
+  const anchor = new Date(referenceDate);
+  anchor.setHours(12, 0, 0, 0);
+  const currentKey = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`;
+  const monthKeys = getLast12CalendarMonthKeys(anchor);
+
+  return monthKeys.map((monthKey) => ({
+    key: monthKey,
+    monthShort: daMonthShortFromKey(monthKey),
+    tooltipTitle: formatMonthKey(monthKey),
+    hours: sumHoursInMonth(projectEntries, monthKey),
+    isCurrentMonth: monthKey === currentKey,
+  }));
+}
+
 function formatMonthAxisLabel(monthKey: string, includeYear: boolean): string {
   const [yRaw, mRaw] = monthKey.split("-");
   const y = Number(yRaw);
