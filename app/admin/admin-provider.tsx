@@ -240,14 +240,33 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [session?.user?.id]);
 
   const fetchProjects = useCallback(async () => {
-    const { data, error } = await supabase
+    const withColor = await supabase
       .from("projects")
       .select("id, name, slug, color, is_active, sort_order")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
-    if (error) return { error };
-    setProjects((data ?? []) as ProjectRow[]);
+    if (withColor.error) {
+      console.error("fetchProjects with color failed", withColor.error);
+      const fallback = await supabase
+        .from("projects")
+        .select("id, name, slug, is_active, sort_order")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (fallback.error) {
+        console.error("fetchProjects fallback failed", fallback.error);
+        return { error: fallback.error };
+      }
+
+      const mapped = ((fallback.data ?? []) as Array<Omit<ProjectRow, "color">>).map(
+        (row) => ({ ...row, color: null })
+      );
+      setProjects(mapped);
+      return { error: null };
+    }
+
+    setProjects((withColor.data ?? []) as ProjectRow[]);
     return { error: null };
   }, []);
 
@@ -301,23 +320,40 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       setAdminDataLoading(true);
       setAdminDataError("");
 
-      const [projectsResult, subcategoriesResult, timeEntriesResult, profilesResult] =
-        await Promise.all([
-          fetchProjects(),
-          fetchSubcategories(),
-          fetchTimeEntries(),
-          fetchProfilesForUsage(),
-        ]);
+      const results = await Promise.allSettled([
+        fetchProjects(),
+        fetchSubcategories(),
+        fetchTimeEntries(),
+        fetchProfilesForUsage(),
+      ]);
 
       if (!isActive) return;
 
-      if (
-        projectsResult.error ||
-        subcategoriesResult.error ||
-        timeEntriesResult.error ||
-        profilesResult.error
-      ) {
-        setAdminDataError("Kunne ikke hente admin-data");
+      const [projectsResult, subcategoriesResult, timeEntriesResult, profilesResult] = results;
+
+      const failures: string[] = [];
+      const collectFailure = (
+        label: string,
+        result: PromiseSettledResult<{ error: unknown }>
+      ) => {
+        if (result.status === "rejected") {
+          console.error(`${label} load rejected`, result.reason);
+          failures.push(label);
+          return;
+        }
+        if (result.value.error) {
+          console.error(`${label} load error`, result.value.error);
+          failures.push(label);
+        }
+      };
+
+      collectFailure("projekter", projectsResult);
+      collectFailure("underpunkter", subcategoriesResult);
+      collectFailure("tidsregistreringer", timeEntriesResult);
+      collectFailure("brugere", profilesResult);
+
+      if (failures.length > 0) {
+        setAdminDataError(`Kunne ikke hente: ${failures.join(", ")}`);
       } else {
         setAdminDataError("");
       }
@@ -339,15 +375,25 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setCreateProjectError("");
 
     const sortOrderValue = Number(projectSortOrder);
-    const { error } = await supabase.from("projects").insert({
+    const basePayload = {
       name: projectName.trim(),
       slug: projectSlug.trim(),
-      color: projectColor.trim() || null,
       sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
       is_active: projectIsActive,
-    });
+    };
 
-    if (error) {
+    let insertError: unknown = null;
+    const withColor = await supabase.from("projects").insert({
+      ...basePayload,
+      color: projectColor.trim() || null,
+    });
+    if (withColor.error) {
+      console.error("createProject with color failed", withColor.error);
+      const fallback = await supabase.from("projects").insert(basePayload);
+      insertError = fallback.error;
+    }
+
+    if (insertError) {
       setCreateProjectError("Kunne ikke oprette projekt");
       setCreatingProject(false);
       return;
@@ -410,17 +456,33 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     isActive: boolean;
   }): Promise<boolean> => {
     const sortOrderValue = Number(params.sortOrder);
-    const { error } = await supabase
+    const basePayload = {
+      name: params.name.trim(),
+      slug: params.slug.trim(),
+      sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+      is_active: params.isActive,
+    };
+
+    const withColor = await supabase
       .from("projects")
       .update({
-        name: params.name.trim(),
-        slug: params.slug.trim(),
+        ...basePayload,
         color: params.color.trim() || null,
-        sort_order: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
-        is_active: params.isActive,
       })
       .eq("id", params.projectId);
-    if (error) return false;
+
+    if (withColor.error) {
+      console.error("updateProject with color failed", withColor.error);
+      const fallback = await supabase
+        .from("projects")
+        .update(basePayload)
+        .eq("id", params.projectId);
+      if (fallback.error) {
+        console.error("updateProject fallback failed", fallback.error);
+        return false;
+      }
+    }
+
     await fetchProjects();
     return true;
   };
