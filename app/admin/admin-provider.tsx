@@ -36,6 +36,14 @@ import {
   toDayKey,
 } from "./admin-utils";
 
+function isMissingEmploymentTypeColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybe = error as { code?: string; message?: string; details?: string };
+  const msg = `${maybe.message ?? ""} ${maybe.details ?? ""}`.toLowerCase();
+  if (!msg.includes("employment_type")) return false;
+  return maybe.code === "42703" || msg.includes("column") || msg.includes("does not exist");
+}
+
 export type ProjectDashboardRow = {
   projectSlug: string;
   projectName: string;
@@ -226,14 +234,30 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, title, avatar_url, role, created_at")
+        .select("id, full_name, title, avatar_url, role, created_at, employment_type")
         .eq("id", session.user.id)
         .single();
 
       if (!isActive) return;
 
       if (error) {
-        setProfile(null);
+        if (isMissingEmploymentTypeColumnError(error)) {
+          const { data: row, error: err2 } = await supabase
+            .from("profiles")
+            .select("id, full_name, title, avatar_url, role, created_at")
+            .eq("id", session.user.id)
+            .single();
+          if (!isActive) return;
+          if (err2) setProfile(null);
+          else
+            setProfile(
+              row
+                ? ({ ...(row as Profile), employment_type: null } as Profile)
+                : null
+            );
+        } else {
+          setProfile(null);
+        }
       } else {
         setProfile((data as Profile | null) ?? null);
       }
@@ -306,13 +330,27 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchProfilesForUsage = useCallback(async () => {
-    const { data, error } = await supabase
+    const withEmp = await supabase
       .from("profiles")
-      .select("id, full_name, title, avatar_url, role, created_at")
+      .select("id, full_name, title, avatar_url, role, created_at, employment_type")
       .order("full_name", { ascending: true });
 
-    if (error) return { error };
-    setProfiles((data ?? []) as Profile[]);
+    if (withEmp.error) {
+      if (isMissingEmploymentTypeColumnError(withEmp.error)) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name, title, avatar_url, role, created_at")
+          .order("full_name", { ascending: true });
+
+        if (error) return { error };
+        const rows = (data ?? []) as Array<Omit<Profile, "employment_type">>;
+        setProfiles(rows.map((row) => ({ ...row, employment_type: null })));
+        return { error: null };
+      }
+      return { error: withEmp.error };
+    }
+
+    setProfiles((withEmp.data ?? []) as Profile[]);
     return { error: null };
   }, []);
 

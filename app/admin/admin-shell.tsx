@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Settings2,
   Users,
+  WalletCards,
 } from "lucide-react";
 import { useAdminContext } from "./admin-provider";
 import { getInitials } from "./admin-utils";
@@ -78,6 +79,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/admin" },
   ];
   const navBottom = [
+    {
+      href: "/admin/timeansatte",
+      label: "Timeansatte",
+      icon: WalletCards,
+      match: (p: string) => p === "/admin/timeansatte",
+    },
     { href: "/admin/users", label: "Brugere", icon: Users, match: (p: string) => p === "/admin/users" },
     {
       href: "/admin/settings/projects",

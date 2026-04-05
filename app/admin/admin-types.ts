@@ -5,6 +5,8 @@ export type Profile = {
   avatar_url: string | null;
   role: string | null;
   created_at: string | null;
+  /** e.g. "Ansat", "Student" — used for timeansatte overview. */
+  employment_type: string | null;
 };
 
 export type ProjectRow = {
