@@ -15,6 +15,7 @@ import {
   mostRecentProjectNameForUser,
   sumTotalHoursInRangeForUsers,
 } from "../timeansatte-utils";
+import { TimeansatteDailySection } from "./_components/timeansatte-daily-section";
 import { TimeansatteMonthlyTable } from "./_components/timeansatte-monthly-table";
 import { TimeansatteSummaryCards } from "./_components/timeansatte-summary-cards";
 import { TimeansatteWeeklyTable } from "./_components/timeansatte-weekly-table";
@@ -102,6 +103,8 @@ export default function TimeansattePage() {
       <TimeansatteWeeklyTable weeks={weeks} rows={rows} />
 
       <TimeansatteMonthlyTable months={months} rows={rows} />
+
+      <TimeansatteDailySection rows={rows} studentEntries={studentEntries} />
     </div>
   );
 }

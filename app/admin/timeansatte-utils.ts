@@ -1,8 +1,12 @@
 import type { Profile, TimeEntryRow } from "./admin-types";
-import { formatHours, getEntryDurationHours, parseDayKeyToDate } from "./admin-utils";
+import {
+  formatHours,
+  getEntryDurationHours,
+  parseDayKeyToDate,
+} from "./admin-utils";
 
-/** Matches `profiles.employment_type` for timelønnede studerende. */
-export const STUDENT_EMPLOYMENT_TYPE = "Student";
+/** Normalized value for `profiles.employment_type` (matched case-insensitively). */
+export const STUDENT_EMPLOYMENT_TYPE_NORMALIZED = "student";
 
 const DA_MONTH_SHORT = [
   "jan",
@@ -34,9 +38,10 @@ export type MonthBucket = {
 };
 
 export function filterStudentProfiles(profiles: readonly Profile[]): Profile[] {
-  return profiles.filter(
-    (p) => (p.employment_type?.trim() ?? "") === STUDENT_EMPLOYMENT_TYPE
-  );
+  return profiles.filter((p) => {
+    const raw = p.employment_type?.trim() ?? "";
+    return raw.toLowerCase() === STUDENT_EMPLOYMENT_TYPE_NORMALIZED;
+  });
 }
 
 /** ISO 8601 week calendar year and week number (local date). */
@@ -212,4 +217,46 @@ export function mostRecentProjectNameForUser(
   if (!bestSlug) return null;
   const name = projectNameBySlug.get(bestSlug)?.trim();
   return name || bestSlug;
+}
+
+export type StudentDayHoursRow = {
+  dayKey: string;
+  hours: number;
+  /** Danish long date for display. */
+  label: string;
+};
+
+export function formatDayKeyDanish(dayKey: string): string {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return dayKey;
+  const date = new Date(y, m - 1, d, 12, 0, 0, 0);
+  return new Intl.DateTimeFormat("da-DK", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+/**
+ * All calendar days with at least one entry for `userId`, totals summed per day.
+ * Newest day first (`YYYY-MM-DD` sort).
+ */
+export function buildDailyHoursForStudent(
+  entries: readonly TimeEntryRow[],
+  userId: string
+): StudentDayHoursRow[] {
+  const byDay = new Map<string, number>();
+  for (const e of entries) {
+    if (e.user_id !== userId) continue;
+    const h = getEntryDurationHours(e.start_time, e.end_time);
+    byDay.set(e.entry_date, (byDay.get(e.entry_date) ?? 0) + h);
+  }
+  return Array.from(byDay.entries())
+    .map(([dayKey, hours]) => ({
+      dayKey,
+      hours,
+      label: formatDayKeyDanish(dayKey),
+    }))
+    .sort((a, b) => b.dayKey.localeCompare(a.dayKey, "en"));
 }
